@@ -1,12 +1,14 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require("fs");
 const path = require("path");
-const { exec, execFile } = require("child_process");
+const { exec } = require("child_process");
 const { app, BrowserWindow, globalShortcut, ipcMain, screen, shell } = require("electron");
 
 let overlayWindow = null;
 let tickInterval = null;
 let latestCursorPoint = { x: 0, y: 0 };
+
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 function readEnvValue(key) {
   const candidates = [
@@ -60,12 +62,20 @@ function getGroqTextApiKey() {
   );
 }
 
-function getGoogleTtsApiKey() {
+function getElevenLabsApiKey() {
   return (
-    process.env.GOOGLE_TTS_API_KEY ||
-    readEnvValue("GOOGLE_TTS_API_KEY") ||
-    process.env.GOOGLE_API_KEY ||
-    readEnvValue("GOOGLE_API_KEY")
+    process.env.ELEVENLABS_API_KEY ||
+    readEnvValue("ELEVENLABS_API_KEY") ||
+    process.env.ELEVEN_LABS_API_KEY ||
+    readEnvValue("ELEVEN_LABS_API_KEY")
+  );
+}
+
+function getElevenLabsVoiceId() {
+  return (
+    process.env.ELEVENLABS_VOICE_ID ||
+    readEnvValue("ELEVENLABS_VOICE_ID") ||
+    "EXAVITQu4vr4xnSDxMaL"
   );
 }
 
@@ -78,9 +88,9 @@ function safeVoiceText(input) {
 }
 
 async function speakWithCloudTts(text) {
-  const googleTtsApiKey = getGoogleTtsApiKey();
-  if (!googleTtsApiKey) {
-    return { ok: false, reason: "GOOGLE_TTS_API_KEY is missing." };
+  const elevenLabsApiKey = getElevenLabsApiKey();
+  if (!elevenLabsApiKey) {
+    return { ok: false, reason: "ELEVENLABS_API_KEY is missing." };
   }
 
   const spokenText = safeVoiceText(text);
@@ -88,68 +98,37 @@ async function speakWithCloudTts(text) {
     return { ok: false, reason: "No text available to speak." };
   }
 
-  const outputFile = path.join(app.getPath("temp"), `ai-buddy-${Date.now()}.wav`);
-  const response = await fetch(`https://texttospeech.googleapis.com/v1/text:synthesize?key=${encodeURIComponent(googleTtsApiKey)}`, {
+  const voiceId = getElevenLabsVoiceId();
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Accept: "audio/mpeg",
+      "xi-api-key": elevenLabsApiKey,
     },
     body: JSON.stringify({
-      input: {
-        text: spokenText,
-      },
-      voice: {
-        languageCode: "en-US",
-        name: "en-US-Neural2-C",
-      },
-      audioConfig: {
-        audioEncoding: "LINEAR16",
-        speakingRate: 1,
-        pitch: 0,
+      text: spokenText,
+      model_id: "eleven_turbo_v2_5",
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: 0.8,
+        style: 0.15,
+        use_speaker_boost: true,
       },
     }),
   });
 
   if (!response.ok) {
     const body = await response.text();
-    return { ok: false, reason: `Google TTS failed (${response.status}): ${body}` };
+    return { ok: false, reason: `ElevenLabs TTS failed (${response.status}): ${body}` };
   }
 
-  const data = await response.json();
-  if (!data.audioContent) {
-    return { ok: false, reason: "Google TTS returned no audio content." };
-  }
-
-  await fs.promises.writeFile(outputFile, Buffer.from(data.audioContent, "base64"));
-
-  await new Promise((resolve, reject) => {
-    const playScript = `
-try {
-  $player = New-Object System.Media.SoundPlayer '${outputFile.replace(/\\/g, "\\\\")}'
-  $player.PlaySync()
-  Write-Output "OK"
-} catch {
-  Write-Output "ERR"
-}
-`;
-
-    execFile(
-      "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", playScript],
-      { windowsHide: true, timeout: 30000 },
-      (error, stdout) => {
-        if (error || String(stdout || "").trim() !== "OK") {
-          reject(error || new Error("Audio playback failed."));
-          return;
-        }
-
-        resolve();
-      },
-    );
-  });
-
-  fs.promises.unlink(outputFile).catch(() => {});
-  return { ok: true };
+  const audioArrayBuffer = await response.arrayBuffer();
+  return {
+    ok: true,
+    audioBase64: Buffer.from(audioArrayBuffer).toString("base64"),
+    mimeType: "audio/mpeg",
+  };
 }
 
 function runCommand(command) {
@@ -401,14 +380,27 @@ app.whenReady().then(() => {
         ok: true,
         transcript,
         message: finalMessage,
+        tts: speechResult.ok
+          ? {
+              audioBase64: speechResult.audioBase64,
+              mimeType: speechResult.mimeType,
+            }
+          : null,
       };
     } catch (error) {
       const fallbackErrorMessage = `Voice pipeline error: ${error.message}`;
-      await speakWithCloudTts(fallbackErrorMessage).catch(() => {});
+      const speechResult = await speakWithCloudTts(fallbackErrorMessage).catch(() => ({ ok: false }));
       return {
         ok: false,
         transcript: "",
         message: fallbackErrorMessage,
+        tts:
+          speechResult.ok && speechResult.audioBase64
+            ? {
+                audioBase64: speechResult.audioBase64,
+                mimeType: speechResult.mimeType,
+              }
+            : null,
       };
     }
   });

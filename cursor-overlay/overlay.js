@@ -10,6 +10,7 @@ let currentX = targetX;
 let currentY = targetY;
 let latestScreenFrame = null;
 let isListening = false;
+let currentAssistantAudio = null;
 
 const sideOffsetX = 42;
 const sideOffsetY = 28;
@@ -23,6 +24,56 @@ ipcRenderer.on("cursor:position", (_event, payload) => {
 
 function setStatus(text) {
   statusPanel.innerHTML = `<strong>AI Buddy</strong><br />${text}`;
+}
+
+async function playAssistantAudio(tts) {
+  if (!tts || !tts.audioBase64) {
+    return;
+  }
+
+  try {
+    const mimeType = tts.mimeType || "audio/mpeg";
+    const binary = atob(tts.audioBase64);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+
+    const blob = new Blob([bytes], { type: mimeType });
+    const objectUrl = URL.createObjectURL(blob);
+    const audio = new Audio(objectUrl);
+    audio.volume = 1;
+    currentAssistantAudio = audio;
+
+    await new Promise((resolve, reject) => {
+      const onEnded = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = () => {
+        cleanup();
+        reject(new Error("Failed to play assistant audio."));
+      };
+      const cleanup = () => {
+        audio.removeEventListener("ended", onEnded);
+        audio.removeEventListener("error", onError);
+        URL.revokeObjectURL(objectUrl);
+        if (currentAssistantAudio === audio) {
+          currentAssistantAudio = null;
+        }
+      };
+
+      audio.addEventListener("ended", onEnded);
+      audio.addEventListener("error", onError);
+      audio.play().catch((error) => {
+        cleanup();
+        reject(error);
+      });
+    });
+  } catch (error) {
+    setStatus(`Audio playback issue: ${error.message}`);
+  }
 }
 
 async function captureScreenFrame() {
@@ -142,10 +193,12 @@ async function listenOnce() {
 
     if (!result.ok) {
       setStatus(result.message);
+      await playAssistantAudio(result.tts);
       return;
     }
 
     setStatus(`Heard: "${result.transcript}"<br />${result.message}`);
+    await playAssistantAudio(result.tts);
   } catch (error) {
     setStatus(`Voice error: ${error.message}`);
   } finally {
