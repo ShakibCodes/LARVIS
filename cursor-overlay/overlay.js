@@ -2,6 +2,7 @@
 const { desktopCapturer, ipcRenderer } = require("electron");
 
 const cursor = document.getElementById("secondary-cursor");
+const voiceBars = Array.from(document.querySelectorAll(".voice-bar"));
 const clickRing = document.getElementById("click-ring");
 const statusPanel = document.getElementById("assistant-status");
 const cursorWidth = 13;
@@ -25,6 +26,7 @@ let activeOffsetX = followOffsetX;
 let activeOffsetY = followOffsetY;
 const captureIntervalMs = 2500;
 const recordingMs = 4500;
+let visualizerRafId = null;
 
 function renderCursor() {
   cursor.style.transform = `translate3d(${currentX + activeOffsetX}px, ${currentY + activeOffsetY}px, 0)`;
@@ -43,6 +45,74 @@ function setStatus(text) {
     return;
   }
   statusPanel.innerHTML = `<strong>AI Buddy</strong><br />${text}`;
+}
+
+function setVoiceVisualizerLevel(level) {
+  if (voiceBars.length === 0) {
+    return;
+  }
+
+  const clamped = Math.max(0, Math.min(1, level));
+  for (let i = 0; i < voiceBars.length; i += 1) {
+    const position = i / Math.max(voiceBars.length - 1, 1);
+    const shapeBoost = 0.12 + (0.28 * (1 - Math.abs(position - 0.5) * 2));
+    const barLevel = Math.max(0, Math.min(1, clamped + shapeBoost - 0.16));
+    voiceBars[i].style.setProperty("--level", barLevel.toFixed(3));
+  }
+}
+
+function startVoiceVisualizer(stream) {
+  if (!cursor) {
+    return () => {};
+  }
+
+  cursor.classList.add("listening");
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) {
+    setVoiceVisualizerLevel(0.2);
+    return () => {
+      cursor.classList.remove("listening");
+      setVoiceVisualizerLevel(0);
+    };
+  }
+
+  const audioContext = new AudioContextCtor();
+  const source = audioContext.createMediaStreamSource(stream);
+  const analyser = audioContext.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.76;
+  source.connect(analyser);
+
+  const pcmData = new Float32Array(analyser.fftSize);
+  let smoothedLevel = 0;
+
+  const animateLevel = () => {
+    analyser.getFloatTimeDomainData(pcmData);
+    let sumSquares = 0;
+    for (let i = 0; i < pcmData.length; i += 1) {
+      const sample = pcmData[i];
+      sumSquares += sample * sample;
+    }
+    const rms = Math.sqrt(sumSquares / pcmData.length);
+    const normalized = Math.max(0, Math.min(1, (rms - 0.015) * 6.5));
+    smoothedLevel += (normalized - smoothedLevel) * 0.28;
+    setVoiceVisualizerLevel(smoothedLevel);
+    visualizerRafId = window.requestAnimationFrame(animateLevel);
+  };
+
+  animateLevel();
+
+  return () => {
+    if (visualizerRafId !== null) {
+      window.cancelAnimationFrame(visualizerRafId);
+      visualizerRafId = null;
+    }
+    setVoiceVisualizerLevel(0);
+    cursor.classList.remove("listening");
+    source.disconnect();
+    analyser.disconnect();
+    audioContext.close().catch(() => {});
+  };
 }
 
 async function playAssistantAudio(tts) {
@@ -134,6 +204,7 @@ async function recordMicrophoneChunk(durationMs) {
     audio: true,
     video: false,
   });
+  const stopVisualizer = startVoiceVisualizer(stream);
 
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -146,6 +217,7 @@ async function recordMicrophoneChunk(durationMs) {
     };
 
     recorder.onerror = () => {
+      stopVisualizer();
       for (const track of stream.getTracks()) {
         track.stop();
       }
@@ -153,6 +225,7 @@ async function recordMicrophoneChunk(durationMs) {
     };
 
     recorder.onstop = async () => {
+      stopVisualizer();
       for (const track of stream.getTracks()) {
         track.stop();
       }

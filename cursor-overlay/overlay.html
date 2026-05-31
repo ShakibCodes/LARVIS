@@ -25,10 +25,51 @@
         background: linear-gradient(135deg, #7dd3fc 0%, #3b82f6 60%, #1d4ed8 100%);
         filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.55));
         will-change: transform;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+          width 140ms ease,
+          height 140ms ease,
+          border-radius 140ms ease,
+          clip-path 140ms ease,
+          background 140ms ease,
+          filter 140ms ease;
       }
 
       #secondary-cursor.clicking {
         filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.95));
+      }
+
+      #secondary-cursor.listening {
+        width: 18px;
+        height: 12px;
+        border-radius: 8px;
+        clip-path: inset(0 round 8px);
+        background: linear-gradient(135deg, rgba(14, 27, 72, 0.95) 0%, rgba(29, 78, 216, 0.9) 100%);
+        filter: drop-shadow(0 0 11px rgba(56, 189, 248, 0.78));
+      }
+
+      .voice-bars {
+        width: 12px;
+        height: 8px;
+        display: none;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1px;
+      }
+
+      #secondary-cursor.listening .voice-bars {
+        display: flex;
+      }
+
+      .voice-bar {
+        width: 2px;
+        height: calc(2px + var(--level, 0) * 6px);
+        border-radius: 999px;
+        background: linear-gradient(180deg, #7dd3fc 0%, #3b82f6 100%);
+        box-shadow: 0 0 4px rgba(125, 211, 252, 0.55);
+        transition: height 72ms linear;
       }
 
       #click-ring {
@@ -62,7 +103,15 @@
     </style>
   </head>
   <body>
-    <div id="secondary-cursor" aria-hidden="true"></div>
+    <div id="secondary-cursor" aria-hidden="true">
+      <div class="voice-bars" aria-hidden="true">
+        <span class="voice-bar"></span>
+        <span class="voice-bar"></span>
+        <span class="voice-bar"></span>
+        <span class="voice-bar"></span>
+        <span class="voice-bar"></span>
+      </div>
+    </div>
     <div id="click-ring" aria-hidden="true"></div>
     <script src="./overlay.js"></script>
   </body>
