@@ -234,6 +234,12 @@ async function waitUntilCursorNearTarget(maxWaitMs = 2200) {
   }
 }
 
+async function moveCursorTo(x, y, maxWaitMs = 2200) {
+  targetX = x;
+  targetY = y;
+  await waitUntilCursorNearTarget(maxWaitMs);
+}
+
 function showClickCue(x, y) {
   cursor.classList.add("clicking");
   clickRing.classList.remove("active");
@@ -271,6 +277,8 @@ ipcRenderer.on("assistant:guided-tour", async (_event, payload) => {
 
   isGuidedTourRunning = true;
   isGuidedControlActive = true;
+  const returnX = currentX;
+  const returnY = currentY;
 
   try {
     setStatus(`Guided tour started for ${software}.`);
@@ -281,9 +289,7 @@ ipcRenderer.on("assistant:guided-tour", async (_event, payload) => {
         continue;
       }
 
-      targetX = step.x;
-      targetY = step.y;
-      await waitUntilCursorNearTarget();
+      await moveCursorTo(step.x, step.y);
 
       const stepLabel = `Step ${i + 1}/${steps.length}`;
       const needsClick = Boolean(step.click);
@@ -297,9 +303,13 @@ ipcRenderer.on("assistant:guided-tour", async (_event, payload) => {
       await sleep(180);
     }
 
+    setStatus(`Returning cursor to its original position...`);
+    await moveCursorTo(returnX, returnY, 2400);
+    await sleep(220);
     setStatus(`Guided tour finished for ${software}. Press Ctrl+Shift+V for another command.`);
   } catch (error) {
     setStatus(`Guided tour issue: ${error.message}`);
+    await moveCursorTo(returnX, returnY, 2400).catch(() => {});
   } finally {
     isGuidedTourRunning = false;
     isGuidedControlActive = false;
