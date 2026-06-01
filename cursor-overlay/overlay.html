@@ -63,6 +63,38 @@
         display: flex;
       }
 
+      #secondary-cursor.executing {
+        width: 16px;
+        height: 16px;
+        border-radius: 999px;
+        clip-path: none;
+        background: transparent;
+        filter: drop-shadow(0 0 11px rgba(56, 189, 248, 0.78));
+      }
+
+      .loading-spinner {
+        width: 12px;
+        height: 12px;
+        border-radius: 999px;
+        border: 2px solid rgba(56, 189, 248, 0.28);
+        border-top-color: rgba(125, 211, 252, 0.98);
+        display: none;
+        animation: spinner-turn 680ms linear infinite;
+      }
+
+      #secondary-cursor.executing .loading-spinner {
+        display: block;
+      }
+
+      @keyframes spinner-turn {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
       .voice-bar {
         width: 2px;
         height: calc(2px + var(--level, 0) * 6px);
@@ -111,6 +143,7 @@
         <span class="voice-bar"></span>
         <span class="voice-bar"></span>
       </div>
+      <div class="loading-spinner" aria-hidden="true"></div>
     </div>
     <div id="click-ring" aria-hidden="true"></div>
     <script src="./overlay.js"></script>

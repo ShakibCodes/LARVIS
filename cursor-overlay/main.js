@@ -280,9 +280,7 @@ function openBrowserTask(intent) {
 
   const url = query ? rule.searchUrl(query) : rule.homeUrl;
   shell.openExternal(url);
-  return query
-    ? `Opening ${friendlySiteName} and searching for ${speakingQuery}.`
-    : `Opening ${friendlySiteName}.`;
+  return query ? `Searching ${friendlySiteName} for ${speakingQuery}.` : `Opening ${friendlySiteName}.`;
 }
 
 async function openYouTubeTopResultOrSearch(query) {
@@ -309,16 +307,74 @@ async function openYouTubeTopResultOrSearch(query) {
     const match = html.match(/\"videoId\":\"([a-zA-Z0-9_-]{11})\"/);
     if (!match || !match[1]) {
       shell.openExternal(searchUrl);
-      return `Opening YouTube and searching for ${cleanQuery}.`;
+      return buildYouTubeReply(cleanQuery, { didAutoplay: false });
     }
 
     const videoId = match[1];
     shell.openExternal(`https://www.youtube.com/watch?v=${videoId}&autoplay=1`);
-    return `Opening YouTube and playing ${cleanQuery}.`;
+    return buildYouTubeReply(cleanQuery, { didAutoplay: true });
   } catch {
     shell.openExternal(`https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`);
-    return `Opening YouTube and searching for ${cleanQuery}.`;
+    return buildYouTubeReply(cleanQuery, { didAutoplay: false });
   }
+}
+
+function classifyYouTubeQuery(query) {
+  const normalized = normalizeTranscript(query).replace(/[^\w\s]/g, " ");
+  const hasAny = (words) => words.some((word) => new RegExp(`\\b${word}\\b`).test(normalized));
+
+  if (hasAny(["tutorial", "how", "learn", "course", "lecture", "class", "explain", "education", "study"])) {
+    return "educational";
+  }
+  if (hasAny(["podcast", "interview", "news", "documentary", "review", "analysis"])) {
+    return "informational";
+  }
+  if (hasAny(["rock", "metal", "punk", "grunge"])) {
+    return "rock";
+  }
+  if (hasAny(["pop", "dance", "edm", "disco"])) {
+    return "pop";
+  }
+  if (hasAny(["hip hop", "hiphop", "rap", "trap"])) {
+    return "hiphop";
+  }
+  if (hasAny(["jazz", "blues", "lofi", "lo-fi"])) {
+    return "chill";
+  }
+  if (hasAny(["song", "music", "track", "playlist", "album", "remix", "ac dc", "acdc"])) {
+    return "music";
+  }
+  return "general";
+}
+
+function buildYouTubeReply(query, options = {}) {
+  const topic = String(query || "").trim().slice(0, 80);
+  const didAutoplay = Boolean(options.didAutoplay);
+  const kind = classifyYouTubeQuery(query);
+
+  if (kind === "educational") {
+    return didAutoplay ? `Playing ${topic}.` : `Opening YouTube results for ${topic}.`;
+  }
+  if (kind === "informational") {
+    return didAutoplay ? `Playing ${topic}.` : `Opening results for ${topic}.`;
+  }
+  if (kind === "rock") {
+    return didAutoplay ? `Rock on, playing ${topic}.` : `Rock mode on, finding ${topic}.`;
+  }
+  if (kind === "pop") {
+    return didAutoplay ? `Pop vibes, playing ${topic}.` : `Pop vibes, finding ${topic}.`;
+  }
+  if (kind === "hiphop") {
+    return didAutoplay ? `Beat drop, playing ${topic}.` : `Beat drop, finding ${topic}.`;
+  }
+  if (kind === "chill") {
+    return didAutoplay ? `Smooth pick, playing ${topic}.` : `Smooth pick, finding ${topic}.`;
+  }
+  if (kind === "music") {
+    return didAutoplay ? `Nice choice, playing ${topic}.` : `Nice choice, finding ${topic}.`;
+  }
+
+  return didAutoplay ? `Playing ${topic}.` : `Opening YouTube results for ${topic}.`;
 }
 
 async function transcribeWithGroq(audioBase64, mimeType) {

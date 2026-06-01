@@ -14,6 +14,7 @@ let currentX = targetX;
 let currentY = targetY;
 let latestScreenFrame = null;
 let isListening = false;
+let isExecuting = false;
 let currentAssistantAudio = null;
 let isGuidedTourRunning = false;
 let isGuidedControlActive = false;
@@ -61,12 +62,27 @@ function setVoiceVisualizerLevel(level) {
   }
 }
 
+function setExecutingState(nextState) {
+  isExecuting = Boolean(nextState);
+  if (!cursor) {
+    return;
+  }
+  if (isExecuting) {
+    cursor.classList.remove("listening");
+    cursor.classList.add("executing");
+    setVoiceVisualizerLevel(0);
+    return;
+  }
+  cursor.classList.remove("executing");
+}
+
 function startVoiceVisualizer(stream) {
   if (!cursor) {
     return () => {};
   }
 
   cursor.classList.add("listening");
+  cursor.classList.remove("executing");
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
   if (!AudioContextCtor) {
     setVoiceVisualizerLevel(0.2);
@@ -276,6 +292,7 @@ async function listenOnce() {
     await refreshScreenContext();
     const cursorContext = await ipcRenderer.invoke("assistant:cursor-context");
 
+    setExecutingState(true);
     const result = await ipcRenderer.invoke("assistant:listen-and-execute", {
       audioBase64: audioPayload.audioBase64,
       mimeType: audioPayload.mimeType,
@@ -294,6 +311,7 @@ async function listenOnce() {
   } catch (error) {
     setStatus(`Voice error: ${error.message}`);
   } finally {
+    setExecutingState(false);
     isListening = false;
   }
 }
