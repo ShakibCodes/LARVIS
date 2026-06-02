@@ -18,6 +18,7 @@ let latestScreenFrame = null;
 let isListening = false;
 let isExecuting = false;
 let currentAssistantAudio = null;
+let queuedInterruptionListen = false;
 let isGuidedTourRunning = false;
 let isGuidedControlActive = false;
 let tooltipText = "";
@@ -29,7 +30,13 @@ const guidedOffsetY = -(cursorHeight / 2);
 let activeOffsetX = followOffsetX;
 let activeOffsetY = followOffsetY;
 const captureIntervalMs = 2500;
-const recordingMs = 4500;
+const recordingTimeoutMs = 12000;
+const initialSpeechTimeoutMs = 5000;
+const minRecordingMs = 900;
+const silenceToStopMs = 950;
+const speechRmsThreshold = 0.035;
+const interruptionRmsThreshold = 0.045;
+const interruptionHoldMs = 260;
 let visualizerRafId = null;
 const allowedCursorColors = new Set(["blue", "green", "yellow", "red"]);
 
@@ -209,7 +216,7 @@ function startVoiceVisualizer(stream) {
 
 async function playAssistantAudio(tts) {
   if (!tts || !tts.audioBase64) {
-    return;
+    return { interrupted: false };
   }
 
   try {
@@ -227,16 +234,29 @@ async function playAssistantAudio(tts) {
     audio.volume = 1;
     currentAssistantAudio = audio;
 
-    await new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
+      let wasInterrupted = false;
+      const stopBargeInMonitor = startBargeInMonitor(() => {
+        if (audio.paused || audio.ended) {
+          return;
+        }
+        wasInterrupted = true;
+        audio.pause();
+        audio.currentTime = 0;
+        cleanup();
+        resolve({ interrupted: true });
+      });
+
       const onEnded = () => {
         cleanup();
-        resolve();
+        resolve({ interrupted: false });
       };
       const onError = () => {
         cleanup();
         reject(new Error("Failed to play assistant audio."));
       };
       const cleanup = () => {
+        stopBargeInMonitor();
         audio.removeEventListener("ended", onEnded);
         audio.removeEventListener("error", onError);
         URL.revokeObjectURL(objectUrl);
@@ -249,12 +269,106 @@ async function playAssistantAudio(tts) {
       audio.addEventListener("error", onError);
       audio.play().catch((error) => {
         cleanup();
+        if (wasInterrupted) {
+          resolve({ interrupted: true });
+          return;
+        }
         reject(error);
       });
     });
   } catch (error) {
     setStatus(`Audio playback issue: ${error.message}`);
+    return { interrupted: false };
   }
+}
+
+function startBargeInMonitor(onInterrupt) {
+  if (isGuidedTourRunning) {
+    return () => {};
+  }
+
+  let stopped = false;
+  let stream = null;
+  let audioContext = null;
+  let source = null;
+  let analyser = null;
+  let monitorInterval = null;
+  let speechStartedAt = 0;
+
+  const stop = () => {
+    stopped = true;
+    if (monitorInterval !== null) {
+      clearInterval(monitorInterval);
+      monitorInterval = null;
+    }
+    if (source) {
+      source.disconnect();
+    }
+    if (analyser) {
+      analyser.disconnect();
+    }
+    if (audioContext) {
+      audioContext.close().catch(() => {});
+    }
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+    }
+  };
+
+  navigator.mediaDevices
+    .getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+      video: false,
+    })
+    .then((nextStream) => {
+      if (stopped) {
+        for (const track of nextStream.getTracks()) {
+          track.stop();
+        }
+        return;
+      }
+
+      stream = nextStream;
+      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextCtor) {
+        return;
+      }
+
+      audioContext = new AudioContextCtor();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.74;
+      source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      const pcmData = new Float32Array(analyser.fftSize);
+
+      monitorInterval = setInterval(() => {
+        const rms = getStreamRms(analyser, pcmData);
+        const now = Date.now();
+
+        if (rms >= interruptionRmsThreshold) {
+          if (!speechStartedAt) {
+            speechStartedAt = now;
+          }
+          if (now - speechStartedAt >= interruptionHoldMs) {
+            stop();
+            onInterrupt();
+          }
+          return;
+        }
+
+        speechStartedAt = 0;
+      }, 60);
+    })
+    .catch(() => {});
+
+  return stop;
 }
 
 async function captureScreenFrame() {
@@ -291,16 +405,77 @@ function stripDataUrlPrefix(dataUrl) {
   return dataUrl.slice(idx + 1);
 }
 
-async function recordMicrophoneChunk(durationMs) {
+function getStreamRms(analyser, pcmData) {
+  analyser.getFloatTimeDomainData(pcmData);
+  let sumSquares = 0;
+  for (let i = 0; i < pcmData.length; i += 1) {
+    const sample = pcmData[i];
+    sumSquares += sample * sample;
+  }
+  return Math.sqrt(sumSquares / pcmData.length);
+}
+
+async function recordMicrophoneUntilSilence() {
   const stream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
     video: false,
   });
   const stopVisualizer = startVoiceVisualizer(stream);
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  const audioContext = AudioContextCtor ? new AudioContextCtor() : null;
+  const analyser = audioContext ? audioContext.createAnalyser() : null;
+  const source = audioContext ? audioContext.createMediaStreamSource(stream) : null;
+  const pcmData = analyser ? new Float32Array(analyser.fftSize) : null;
+
+  if (analyser && source) {
+    analyser.fftSize = 512;
+    analyser.smoothingTimeConstant = 0.72;
+    source.connect(analyser);
+  }
 
   return new Promise((resolve, reject) => {
     const chunks = [];
     const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+    let monitorInterval = null;
+    let forcedStopTimeout = null;
+    let hasHeardSpeech = false;
+    let firstSpeechAt = 0;
+    let lastSpeechAt = 0;
+    const startedAt = Date.now();
+
+    const cleanup = () => {
+      if (monitorInterval !== null) {
+        clearInterval(monitorInterval);
+        monitorInterval = null;
+      }
+      if (forcedStopTimeout !== null) {
+        clearTimeout(forcedStopTimeout);
+        forcedStopTimeout = null;
+      }
+      stopVisualizer();
+      if (source) {
+        source.disconnect();
+      }
+      if (analyser) {
+        analyser.disconnect();
+      }
+      if (audioContext) {
+        audioContext.close().catch(() => {});
+      }
+      for (const track of stream.getTracks()) {
+        track.stop();
+      }
+    };
+
+    const stopRecorder = () => {
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+    };
 
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size > 0) {
@@ -309,18 +484,12 @@ async function recordMicrophoneChunk(durationMs) {
     };
 
     recorder.onerror = () => {
-      stopVisualizer();
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
+      cleanup();
       reject(new Error("Microphone recording failed."));
     };
 
     recorder.onstop = async () => {
-      stopVisualizer();
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
+      cleanup();
 
       try {
         const blob = new Blob(chunks, { type: "audio/webm" });
@@ -345,11 +514,34 @@ async function recordMicrophoneChunk(durationMs) {
     };
 
     recorder.start();
-    setTimeout(() => {
-      if (recorder.state !== "inactive") {
-        recorder.stop();
+
+    forcedStopTimeout = setTimeout(stopRecorder, recordingTimeoutMs);
+
+    monitorInterval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = now - startedAt;
+      const rms = analyser && pcmData ? getStreamRms(analyser, pcmData) : 0;
+      const isSpeaking = rms >= speechRmsThreshold;
+
+      if (isSpeaking) {
+        if (!hasHeardSpeech) {
+          firstSpeechAt = now;
+          setStatus("Listening... keep going.");
+        }
+        hasHeardSpeech = true;
+        lastSpeechAt = now;
+        return;
       }
-    }, durationMs);
+
+      if (!hasHeardSpeech && elapsed >= initialSpeechTimeoutMs) {
+        stopRecorder();
+        return;
+      }
+
+      if (hasHeardSpeech && now - firstSpeechAt >= minRecordingMs && now - lastSpeechAt >= silenceToStopMs) {
+        stopRecorder();
+      }
+    }, 80);
   });
 }
 
@@ -359,10 +551,11 @@ async function listenOnce() {
   }
 
   isListening = true;
+  queuedInterruptionListen = false;
 
   try {
     setStatus("Listening... speak now.");
-    const audioPayload = await recordMicrophoneChunk(recordingMs);
+    const audioPayload = await recordMicrophoneUntilSilence();
 
     setStatus("Transcribing with Groq Whisper...");
     await refreshScreenContext();
@@ -378,17 +571,26 @@ async function listenOnce() {
 
     if (!result.ok) {
       setStatus(result.message);
-      await playAssistantAudio(result.tts);
+      const playback = await playAssistantAudio(result.tts);
+      queuedInterruptionListen = Boolean(playback?.interrupted);
       return;
     }
 
     setStatus(`Heard: "${result.transcript}"<br />${result.message}`);
-    await playAssistantAudio(result.tts);
+    const playback = await playAssistantAudio(result.tts);
+    queuedInterruptionListen = Boolean(playback?.interrupted);
   } catch (error) {
     setStatus(`Voice error: ${error.message}`);
   } finally {
     setExecutingState(false);
     isListening = false;
+    if (queuedInterruptionListen) {
+      queuedInterruptionListen = false;
+      setStatus("Listening... go ahead.");
+      setTimeout(() => {
+        void listenOnce();
+      }, 90);
+    }
   }
 }
 
