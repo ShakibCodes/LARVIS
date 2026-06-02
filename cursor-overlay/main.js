@@ -140,57 +140,126 @@ function normalizeTranscript(value) {
   return value.toLowerCase().trim();
 }
 
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 const BROWSER_SITE_RULES = [
   {
+    key: "gmail",
+    displayName: "Gmail",
+    aliases: ["gmail", "gamil", "google mail", "mail"],
+    homeUrl: "https://mail.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_calendar",
+    displayName: "Google Calendar",
+    aliases: ["google calendar", "google calender", "calendar", "calender"],
+    homeUrl: "https://calendar.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_drive",
+    displayName: "Google Drive",
+    aliases: ["google drive", "drive"],
+    homeUrl: "https://drive.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_docs",
+    displayName: "Google Docs",
+    aliases: ["google docs", "docs"],
+    homeUrl: "https://docs.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_sheets",
+    displayName: "Google Sheets",
+    aliases: ["google sheets", "sheets"],
+    homeUrl: "https://sheets.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_slides",
+    displayName: "Google Slides",
+    aliases: ["google slides", "slides"],
+    homeUrl: "https://slides.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_meet",
+    displayName: "Google Meet",
+    aliases: ["google meet", "meet"],
+    homeUrl: "https://meet.google.com",
+    searchUrl: null,
+  },
+  {
+    key: "google_maps",
+    displayName: "Google Maps",
+    aliases: ["google maps", "maps"],
+    homeUrl: "https://maps.google.com",
+    searchUrl: (query) => `https://www.google.com/maps/search/${encodeURIComponent(query)}`,
+  },
+  {
     key: "youtube",
+    displayName: "YouTube",
     aliases: ["youtube", "yt"],
     homeUrl: "https://www.youtube.com",
     searchUrl: (query) => `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`,
   },
   {
     key: "google",
+    displayName: "Google",
     aliases: ["google"],
     homeUrl: "https://www.google.com",
     searchUrl: (query) => `https://www.google.com/search?q=${encodeURIComponent(query)}`,
   },
   {
     key: "github",
+    displayName: "GitHub",
     aliases: ["github"],
     homeUrl: "https://github.com",
     searchUrl: (query) => `https://github.com/search?q=${encodeURIComponent(query)}`,
   },
   {
     key: "amazon",
+    displayName: "Amazon",
     aliases: ["amazon"],
     homeUrl: "https://www.amazon.in",
     searchUrl: (query) => `https://www.amazon.in/s?k=${encodeURIComponent(query)}`,
   },
   {
     key: "flipkart",
+    displayName: "Flipkart",
     aliases: ["flipkart"],
     homeUrl: "https://www.flipkart.com",
     searchUrl: (query) => `https://www.flipkart.com/search?q=${encodeURIComponent(query)}`,
   },
   {
     key: "wikipedia",
+    displayName: "Wikipedia",
     aliases: ["wikipedia", "wiki"],
     homeUrl: "https://www.wikipedia.org",
     searchUrl: (query) => `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(query)}`,
   },
   {
     key: "reddit",
+    displayName: "Reddit",
     aliases: ["reddit"],
     homeUrl: "https://www.reddit.com",
     searchUrl: (query) => `https://www.reddit.com/search/?q=${encodeURIComponent(query)}`,
   },
   {
     key: "linkedin",
+    displayName: "LinkedIn",
     aliases: ["linkedin"],
     homeUrl: "https://www.linkedin.com",
     searchUrl: (query) => `https://www.linkedin.com/search/results/all/?keywords=${encodeURIComponent(query)}`,
   },
   {
     key: "x",
+    displayName: "X",
     aliases: ["x", "twitter"],
     homeUrl: "https://x.com",
     searchUrl: (query) => `https://x.com/search?q=${encodeURIComponent(query)}`,
@@ -209,7 +278,7 @@ function extractBrowserTaskIntent(transcript) {
   let matchedRule = null;
   let matchedAlias = "";
   for (const rule of BROWSER_SITE_RULES) {
-    const alias = rule.aliases.find((name) => new RegExp(`\\b${name}\\b`).test(normalized));
+    const alias = rule.aliases.find((name) => new RegExp(`\\b${escapeRegExp(name)}\\b`).test(normalized));
     if (alias) {
       matchedRule = rule;
       matchedAlias = alias;
@@ -248,8 +317,9 @@ function extractBrowserTaskIntent(transcript) {
   }
 
   let candidate = normalized;
-  candidate = candidate.replace(new RegExp(`\\b(on|in)\\s+${matchedAlias}\\b`, "g"), " ");
-  candidate = candidate.replace(new RegExp(`\\b${matchedAlias}\\b`, "g"), " ");
+  const escapedAlias = escapeRegExp(matchedAlias);
+  candidate = candidate.replace(new RegExp(`\\b(on|in)\\s+${escapedAlias}\\b`, "g"), " ");
+  candidate = candidate.replace(new RegExp(`\\b${escapedAlias}\\b`, "g"), " ");
   candidate = candidate.replace(/\b(open|go to|launch|start)\b/g, " ");
   candidate = candidate.replace(/\b(i want to|i wanna|i would like to|can you|please|for me)\b/g, " ");
   candidate = candidate.replace(/\b(search( for)?|play|listen( to)?|watch|buy|order|find|show|look up)\b/g, " ");
@@ -267,20 +337,45 @@ function extractBrowserTaskIntent(transcript) {
 function openBrowserTask(intent) {
   const query = String(intent?.query || "").trim();
   const rule = intent?.rule;
-  if (!rule || !rule.homeUrl || typeof rule.searchUrl !== "function") {
+  if (!rule || !rule.homeUrl) {
     return "I understood the browser task, but I could not map that site safely yet.";
   }
 
-  const friendlySiteName = rule.key === "x" ? "X" : rule.key[0].toUpperCase() + rule.key.slice(1);
+  const friendlySiteName = rule.displayName || (rule.key === "x" ? "X" : rule.key[0].toUpperCase() + rule.key.slice(1));
   const speakingQuery = query.slice(0, 120);
 
   if (rule.key === "youtube" && query) {
     return openYouTubeTopResultOrSearch(query);
   }
 
-  const url = query ? rule.searchUrl(query) : rule.homeUrl;
+  const url = query && typeof rule.searchUrl === "function" ? rule.searchUrl(query) : rule.homeUrl;
   shell.openExternal(url);
-  return query ? `Searching ${friendlySiteName} for ${speakingQuery}.` : `Opening ${friendlySiteName}.`;
+  return query && typeof rule.searchUrl === "function" ? `Searching ${friendlySiteName} for ${speakingQuery}.` : `Opening ${friendlySiteName}.`;
+}
+
+function extractGenericOpenWebsiteIntent(transcript) {
+  const normalized = normalizeTranscript(transcript)
+    .replace(/[^\w\s.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const match = normalized.match(/^(?:please\s+)?(?:open|go to|launch|start)\s+([a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?:\s+for me)?$/);
+  if (!match) {
+    return null;
+  }
+
+  const hostname = match[1].replace(/^www\./, "");
+  const url = `https://${hostname}`;
+  const displayName = hostname
+    .split(".")[0]
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+
+  return { url, displayName };
+}
+
+function openGenericWebsite(intent) {
+  shell.openExternal(intent.url);
+  return `Opening ${intent.displayName}.`;
 }
 
 async function openYouTubeTopResultOrSearch(query) {
@@ -643,9 +738,14 @@ async function executePlannedAction(plan) {
   const action = (plan?.action || "none").toString();
   const argument = (plan?.argument || "").toString().trim();
 
-  const plannedBrowserTask = extractBrowserTaskIntent(`${action} ${argument}`);
+  const plannedBrowserTask = extractBrowserTaskIntent(argument) || extractBrowserTaskIntent(`${action} ${argument}`);
   if (plannedBrowserTask) {
     return { message: await openBrowserTask(plannedBrowserTask) };
+  }
+
+  const plannedGenericWebsite = extractGenericOpenWebsiteIntent(`${action.replace("_", " ")} ${argument}`);
+  if (plannedGenericWebsite) {
+    return { message: openGenericWebsite(plannedGenericWebsite) };
   }
 
   if (action === "open_notepad") {
@@ -676,6 +776,10 @@ async function executePlannedAction(plan) {
     const browserTask = extractBrowserTaskIntent(argument);
     if (browserTask) {
       return { message: await openBrowserTask(browserTask) };
+    }
+    const genericWebsite = extractGenericOpenWebsiteIntent(`open ${argument}`);
+    if (genericWebsite) {
+      return { message: openGenericWebsite(genericWebsite) };
     }
     const fullUrl = argument.startsWith("http") ? argument : `https://${argument}`;
     shell.openExternal(fullUrl);
@@ -718,6 +822,11 @@ async function executeVoiceCommandFallback(transcript) {
     return openBrowserTask(browserTask);
   }
 
+  const genericWebsite = extractGenericOpenWebsiteIntent(normalized);
+  if (genericWebsite) {
+    return openGenericWebsite(genericWebsite);
+  }
+
   if (normalized.includes("open notepad")) {
     runCommand("start notepad");
     return "Opening Notepad.";
@@ -745,9 +854,19 @@ async function executeVoiceCommandFallback(transcript) {
 
   if (normalized.startsWith("open website ")) {
     const url = normalized.replace("open website ", "").trim();
+    const websiteIntent = extractGenericOpenWebsiteIntent(`open ${url}`);
+    if (websiteIntent) {
+      return openGenericWebsite(websiteIntent);
+    }
     const fullUrl = url.startsWith("http") ? url : `https://${url}`;
     shell.openExternal(fullUrl);
-    return `Opening ${fullUrl}.`;
+    const spokenSite = fullUrl
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .split("/")[0]
+      .split(".")[0]
+      .replace(/[-_]+/g, " ");
+    return `Opening ${spokenSite}.`;
   }
 
   if (normalized.startsWith("explain ")) {
@@ -965,8 +1084,13 @@ function createOverlay() {
       let elementName = "";
 
       try {
-        const plan = await planActionWithGroq(transcript, payload);
-        const actionResult = await executePlannedAction(plan);
+        const directBrowserTask = extractBrowserTaskIntent(transcript);
+        const directGenericWebsite = extractGenericOpenWebsiteIntent(transcript);
+        const actionResult = directBrowserTask
+          ? { message: await openBrowserTask(directBrowserTask) }
+          : directGenericWebsite
+            ? { message: openGenericWebsite(directGenericWebsite) }
+            : await executePlannedAction(await planActionWithGroq(transcript, payload));
         message = actionResult.message;
         suppressFinalTts = Boolean(actionResult.suppressFinalTts);
         shouldStartGuidedTour = Boolean(actionResult.shouldStartGuidedTour);
