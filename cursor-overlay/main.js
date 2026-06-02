@@ -6,6 +6,7 @@ const {
   createBrowserCommandRunner,
   extractBrowserTaskIntent,
   extractGenericOpenWebsiteIntent,
+  extractMultipleBrowserTaskIntents,
 } = require("./lib/browser-commands");
 const { createActionExecutor } = require("./lib/action-executor");
 const {
@@ -109,6 +110,11 @@ async function resolveVoiceAction(transcript, payload) {
   const cursorColorIntent = extractCursorColorIntent(transcript);
   if (cursorColorIntent) {
     return applyCursorColor(overlayWindow, cursorColorIntent);
+  }
+
+  const multipleBrowserTasks = extractMultipleBrowserTaskIntents(transcript);
+  if (multipleBrowserTasks.length > 0) {
+    return { message: browserCommands.openMultipleBrowserTasks(multipleBrowserTasks) };
   }
 
   const directBrowserTask = extractBrowserTaskIntent(transcript);

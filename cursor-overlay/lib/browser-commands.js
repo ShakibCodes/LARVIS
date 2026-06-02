@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { escapeRegExp, normalizeTranscript } = require("./text-utils");
-const { buildReply } = require("./reply-builder");
+const { buildReply, formatList } = require("./reply-builder");
 
 const BROWSER_SITE_RULES = [
   {
@@ -192,6 +192,77 @@ function extractBrowserTaskIntent(transcript) {
   };
 }
 
+function extractMultipleBrowserTaskIntents(transcript) {
+  const normalized = normalizeTranscript(transcript)
+    .replace(/[^\w\s.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!hasOpenIntent(normalized)) {
+    return [];
+  }
+
+  const matches = [];
+  for (const rule of BROWSER_SITE_RULES) {
+    const aliasMatch = findFirstAliasMatch(normalized, rule.aliases);
+    if (aliasMatch) {
+      matches.push({
+        index: aliasMatch.index,
+        site: rule.key,
+        query: "",
+        rule,
+      });
+    }
+  }
+
+  const genericWebsiteMatches = extractGenericOpenWebsiteIntents(transcript);
+  for (const intent of genericWebsiteMatches) {
+    matches.push({
+      index: intent.index,
+      genericWebsite: intent,
+    });
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  for (const match of matches.sort((left, right) => left.index - right.index)) {
+    const key = match.rule?.key || match.genericWebsite?.url;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    deduped.push(match);
+  }
+
+  return deduped.length >= 2 ? deduped : [];
+}
+
+function hasOpenIntent(normalized) {
+  return (
+    normalized.includes("open") ||
+    normalized.includes("go to") ||
+    normalized.includes("launch") ||
+    normalized.includes("start")
+  );
+}
+
+function findFirstAliasMatch(normalized, aliases) {
+  let bestMatch = null;
+  for (const alias of aliases) {
+    const match = new RegExp(`\\b${escapeRegExp(alias)}\\b`).exec(normalized);
+    if (!match) {
+      continue;
+    }
+    if (!bestMatch || match.index < bestMatch.index) {
+      bestMatch = {
+        alias,
+        index: match.index,
+      };
+    }
+  }
+  return bestMatch;
+}
+
 function extractGenericOpenWebsiteIntent(transcript) {
   const normalized = normalizeTranscript(transcript)
     .replace(/[^\w\s.-]/g, " ")
@@ -210,6 +281,35 @@ function extractGenericOpenWebsiteIntent(transcript) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
   return { url, displayName };
+}
+
+function extractGenericOpenWebsiteIntents(transcript) {
+  const normalized = normalizeTranscript(transcript)
+    .replace(/[^\w\s.-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!hasOpenIntent(normalized)) {
+    return [];
+  }
+
+  const matches = [];
+  const domainRegex = /\b([a-z0-9][a-z0-9.-]+\.[a-z]{2,})\b/g;
+  let match = domainRegex.exec(normalized);
+  while (match) {
+    const hostname = match[1].replace(/^www\./, "");
+    matches.push({
+      index: match.index,
+      url: `https://${hostname}`,
+      displayName: hostname
+        .split(".")[0]
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+    });
+    match = domainRegex.exec(normalized);
+  }
+
+  return matches;
 }
 
 function createBrowserCommandRunner(shell) {
@@ -275,9 +375,31 @@ function createBrowserCommandRunner(shell) {
     return buildReply("open", { target: intent.displayName });
   }
 
+  function openMultipleBrowserTasks(intents) {
+    const displayNames = [];
+
+    for (const intent of intents) {
+      if (intent.genericWebsite) {
+        shell.openExternal(intent.genericWebsite.url);
+        displayNames.push(intent.genericWebsite.displayName);
+        continue;
+      }
+
+      const rule = intent.rule;
+      if (!rule?.homeUrl) {
+        continue;
+      }
+      shell.openExternal(rule.homeUrl);
+      displayNames.push(rule.displayName || rule.key);
+    }
+
+    return buildReply("multiOpen", { targets: formatList(displayNames) });
+  }
+
   return {
     openBrowserTask,
     openGenericWebsite,
+    openMultipleBrowserTasks,
   };
 }
 
@@ -343,4 +465,5 @@ module.exports = {
   createBrowserCommandRunner,
   extractBrowserTaskIntent,
   extractGenericOpenWebsiteIntent,
+  extractMultipleBrowserTaskIntents,
 };

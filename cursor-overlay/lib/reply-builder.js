@@ -6,6 +6,12 @@ const REPLY_TEMPLATES = {
     "Got it, opening {target}.",
     "{target} is coming up.",
   ],
+  multiOpen: [
+    "Sure, opening {targets}.",
+    "Yep, opening {targets}.",
+    "On it, opening {targets}.",
+    "Got it, pulling up {targets}.",
+  ],
   search: [
     "Sure, looking up {query}.",
     "Yep, searching for {query}.",
@@ -61,6 +67,15 @@ function buildReply(type, values = {}) {
   return template.replace(/\{(\w+)\}/g, (_match, key) => cleanValue(values[key]));
 }
 
+function formatList(items) {
+  const cleanItems = items.map(cleanValue).filter(Boolean);
+  if (cleanItems.length <= 2) {
+    return cleanItems.join(" and ");
+  }
+
+  return `${cleanItems.slice(0, -1).join(", ")} and ${cleanItems[cleanItems.length - 1]}`;
+}
+
 function cleanValue(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -69,4 +84,5 @@ function cleanValue(value) {
 
 module.exports = {
   buildReply,
+  formatList,
 };
