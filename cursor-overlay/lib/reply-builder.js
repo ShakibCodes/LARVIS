@@ -38,6 +38,12 @@ const REPLY_TEMPLATES = {
     "Found it, I pointed to {target}.",
     "Yep, that is {target}.",
   ],
+  cursorColor: [
+    "Sure, switching the cursor to {color}.",
+    "Yep, making it {color}.",
+    "Got it, cursor is {color} now.",
+    "On it, changing the cursor to {color}.",
+  ],
   unsupported: [
     "I heard you, but I cannot do that one yet.",
     "I got that, but that command is not ready yet.",

@@ -15,6 +15,10 @@
       }
 
       #secondary-cursor {
+        --cursor-start: #7dd3fc;
+        --cursor-mid: #3b82f6;
+        --cursor-end: #1d4ed8;
+        --cursor-glow: rgba(37, 99, 235, 0.55);
         position: fixed;
         top: 0;
         left: 0;
@@ -22,8 +26,8 @@
         height: 15px;
         pointer-events: none;
         clip-path: polygon(0 0, 100% 50%, 0 100%);
-        background: linear-gradient(135deg, #7dd3fc 0%, #3b82f6 60%, #1d4ed8 100%);
-        filter: drop-shadow(0 0 8px rgba(37, 99, 235, 0.55));
+        background: linear-gradient(135deg, var(--cursor-start) 0%, var(--cursor-mid) 60%, var(--cursor-end) 100%);
+        filter: drop-shadow(0 0 8px var(--cursor-glow));
         will-change: transform;
         display: flex;
         align-items: center;
@@ -35,6 +39,27 @@
           clip-path 140ms ease,
           background 140ms ease,
           filter 140ms ease;
+      }
+
+      #secondary-cursor[data-color="green"] {
+        --cursor-start: #86efac;
+        --cursor-mid: #22c55e;
+        --cursor-end: #15803d;
+        --cursor-glow: rgba(34, 197, 94, 0.6);
+      }
+
+      #secondary-cursor[data-color="yellow"] {
+        --cursor-start: #fde68a;
+        --cursor-mid: #facc15;
+        --cursor-end: #ca8a04;
+        --cursor-glow: rgba(250, 204, 21, 0.62);
+      }
+
+      #secondary-cursor[data-color="red"] {
+        --cursor-start: #fca5a5;
+        --cursor-mid: #ef4444;
+        --cursor-end: #b91c1c;
+        --cursor-glow: rgba(239, 68, 68, 0.6);
       }
 
       #assistant-notch {

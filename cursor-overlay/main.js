@@ -15,6 +15,7 @@ const {
   speakWithCloudTts,
   transcribeWithGroq,
 } = require("./lib/cloud-ai");
+const { applyCursorColor, extractCursorColorIntent } = require("./lib/cursor-commands");
 const { createGuidedTourController } = require("./lib/guided-tour");
 const { buildReply } = require("./lib/reply-builder");
 const { normalizeTranscript } = require("./lib/text-utils");
@@ -105,6 +106,11 @@ function createOverlay() {
 }
 
 async function resolveVoiceAction(transcript, payload) {
+  const cursorColorIntent = extractCursorColorIntent(transcript);
+  if (cursorColorIntent) {
+    return applyCursorColor(overlayWindow, cursorColorIntent);
+  }
+
   const directBrowserTask = extractBrowserTaskIntent(transcript);
   if (directBrowserTask) {
     return { message: await browserCommands.openBrowserTask(directBrowserTask) };

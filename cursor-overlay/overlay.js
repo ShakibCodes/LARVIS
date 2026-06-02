@@ -31,6 +31,7 @@ let activeOffsetY = followOffsetY;
 const captureIntervalMs = 2500;
 const recordingMs = 4500;
 let visualizerRafId = null;
+const allowedCursorColors = new Set(["blue", "green", "yellow", "red"]);
 
 function updateAssistantNotch(nextX, nextY) {
   if (!assistantNotch) {
@@ -393,6 +394,14 @@ async function listenOnce() {
 
 ipcRenderer.on("assistant:toggle-listening", () => {
   void listenOnce();
+});
+
+ipcRenderer.on("cursor:set-color", (_event, payload) => {
+  const color = String(payload?.color || "blue").toLowerCase();
+  if (!cursor || !allowedCursorColors.has(color)) {
+    return;
+  }
+  cursor.dataset.color = color === "blue" ? "" : color;
 });
 
 function sleep(ms) {
