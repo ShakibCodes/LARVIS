@@ -263,6 +263,30 @@
           sans-serif;
       }
 
+      .integration-meta {
+        display: grid;
+        gap: 2px;
+      }
+
+      .integration-action {
+        appearance: none;
+        min-width: 68px;
+        height: 23px;
+        border: 1px solid rgba(244, 244, 245, 0.2);
+        border-radius: 5px;
+        background: rgba(63, 63, 70, 0.86);
+        color: #f4f4f5;
+        font:
+          700 9px/1 "Segoe UI",
+          system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+
+      .integration-action:hover {
+        background: rgba(82, 82, 91, 0.96);
+      }
+
       #secondary-cursor.clicking {
         filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.95));
       }
@@ -412,7 +436,10 @@
             <div class="notch-status">Preview</div>
           </div>
           <div class="integration-list">
-            <div class="integration-item">Google Apps<span>Gmail, Calendar, Drive</span></div>
+            <div class="integration-item">
+              <div class="integration-meta">Gmail<span id="gmail-integration-status">Not connected</span></div>
+              <button id="gmail-connect-button" class="integration-action" type="button">Connect</button>
+            </div>
             <div class="integration-item">Web Knowledge<span>Search and summarize</span></div>
             <div class="integration-item">Voice Stack<span>Groq + ElevenLabs</span></div>
           </div>

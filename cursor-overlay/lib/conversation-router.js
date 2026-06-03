@@ -6,6 +6,7 @@ const {
   extractMultipleBrowserTaskIntents,
 } = require("./browser-commands");
 const { extractCursorColorIntent } = require("./cursor-commands");
+const { extractGmailIntent } = require("./gmail-integration");
 const { buildReply } = require("./reply-builder");
 const { detectResponseLanguage } = require("./text-utils");
 const { extractWebKnowledgeIntent } = require("./web-knowledge");
@@ -18,6 +19,7 @@ function createConversationRouter({
   browserCommands,
   conversationContext,
   decisionLog = null,
+  gmailIntegration = null,
   overlayWindowProvider,
   planAction,
   speakInterim,
@@ -78,6 +80,19 @@ function createConversationRouter({
         message: await answerBuddyChat(buddyChatIntent),
         memoryType: "chat",
         route: "chat",
+      };
+    }
+
+    const gmailIntent = extractGmailIntent(transcript);
+    if (gmailIntent && gmailIntegration) {
+      logDecision(transcript, "gmail", { kind: "gmail", type: gmailIntent.type });
+      const result = await gmailIntegration.answer(gmailIntent).catch((error) => ({
+        message: `I tried checking Gmail, but something went wrong: ${error.message}`,
+        route: "gmail",
+      }));
+      return {
+        ...result,
+        route: "gmail",
       };
     }
 

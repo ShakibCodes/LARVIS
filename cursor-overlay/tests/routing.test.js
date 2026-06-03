@@ -10,6 +10,7 @@ const {
 } = require("../lib/browser-commands");
 const { buildReply } = require("../lib/reply-builder");
 const { detectResponseLanguage } = require("../lib/text-utils");
+const { _test: gmailTest } = require("../lib/gmail-integration");
 const { _test, extractWebKnowledgeIntent } = require("../lib/web-knowledge");
 
 function createTestRouter() {
@@ -140,6 +141,27 @@ async function run() {
   assert.ok(chatRouter.decisionLog.list().some((entry) => entry.route === "chat"));
   assert.ok(commandRouter.decisionLog.list().some((entry) => entry.route === "command"));
   assert.ok(webRouter.decisionLog.list().some((entry) => entry.route === "web"));
+
+  assert.strictEqual(gmailTest.extractGmailIntent("connect gmail")?.type, "connect");
+  assert.strictEqual(gmailTest.extractGmailIntent("what new email from yesterday till now have I received")?.type, "recent");
+  assert.strictEqual(gmailTest.extractGmailIntent("is there any important email I have received")?.type, "important");
+  assert.strictEqual(gmailTest.extractGmailIntent("did I get any reply to my email")?.type, "replies");
+  assert.strictEqual(gmailTest.extractGmailIntent("write something good and short from my side to him")?.type, "draftReply");
+
+  const parsedAddress = gmailTest.parseEmailAddress('"Alex Doe" <alex@example.com>');
+  assert.deepStrictEqual(parsedAddress, { email: "alex@example.com", name: "Alex Doe" });
+  const rawReply = gmailTest.buildReplyMime(
+    {
+      from: '"Alex Doe" <alex@example.com>',
+      fromEmail: "alex@example.com",
+      messageId: "<message-1@example.com>",
+      references: "<root@example.com>",
+      subject: "Congrats",
+      threadId: "thread-1",
+    },
+    "Thanks a lot. I really appreciate it.",
+  );
+  assert.match(rawReply, /^[A-Za-z0-9_-]+$/);
 }
 
 run()

@@ -79,10 +79,20 @@ function getElevenLabsModelId() {
   );
 }
 
+function getGoogleOAuthClientId() {
+  return process.env.GOOGLE_OAUTH_CLIENT_ID || readEnvValue("GOOGLE_OAUTH_CLIENT_ID");
+}
+
+function getGoogleOAuthClientSecret() {
+  return process.env.GOOGLE_OAUTH_CLIENT_SECRET || readEnvValue("GOOGLE_OAUTH_CLIENT_SECRET");
+}
+
 module.exports = {
   getElevenLabsApiKey,
   getElevenLabsModelId,
   getElevenLabsVoiceId,
+  getGoogleOAuthClientId,
+  getGoogleOAuthClientSecret,
   getGroqSpeechApiKey,
   getGroqTextApiKey,
 };

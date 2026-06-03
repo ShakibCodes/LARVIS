@@ -12,6 +12,7 @@ const { createConversationContext } = require("./lib/conversation-context");
 const { createConversationRouter } = require("./lib/conversation-router");
 const { createActionExecutor } = require("./lib/action-executor");
 const { createDecisionLog } = require("./lib/decision-log");
+const { createGmailIntegration } = require("./lib/gmail-integration");
 const {
   planActionWithGroq,
   planVisualElementLocationWithGroq,
@@ -32,6 +33,10 @@ let overlayBounds = null;
 let isNotchInteractive = false;
 const conversationContext = createConversationContext();
 const decisionLog = createDecisionLog();
+const gmailIntegration = createGmailIntegration({
+  getUserDataPath: () => app.getPath("userData"),
+  shell,
+});
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
@@ -61,6 +66,7 @@ const conversationRouter = createConversationRouter({
   browserCommands,
   conversationContext,
   decisionLog,
+  gmailIntegration,
   overlayWindowProvider: () => overlayWindow,
   planAction: planActionWithGroq,
   speakInterim: speakInterimMessage,
@@ -254,6 +260,18 @@ function registerIpcHandlers() {
 
   ipcMain.handle("assistant:decision-log", () => {
     return decisionLog.list();
+  });
+
+  ipcMain.handle("assistant:gmail-status", () => {
+    return gmailIntegration.getStatus();
+  });
+
+  ipcMain.handle("assistant:gmail-connect", async () => {
+    return gmailIntegration.connect();
+  });
+
+  ipcMain.handle("assistant:gmail-disconnect", () => {
+    return gmailIntegration.disconnect();
   });
 
   ipcMain.handle("assistant:listen-and-execute", async (_event, payload) => {

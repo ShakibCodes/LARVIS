@@ -6,6 +6,8 @@ const assistantNotch = document.getElementById("assistant-notch");
 const notchViews = Array.from(document.querySelectorAll("[data-notch-view]"));
 const notchNavigationButtons = Array.from(document.querySelectorAll("[data-notch-target]"));
 const notchBackButtons = Array.from(document.querySelectorAll("[data-notch-back]"));
+const gmailConnectButton = document.getElementById("gmail-connect-button");
+const gmailIntegrationStatus = document.getElementById("gmail-integration-status");
 const voiceBars = Array.from(document.querySelectorAll(".voice-bar"));
 const clickRing = document.getElementById("click-ring");
 const tooltip = document.getElementById("cursor-tooltip");
@@ -88,6 +90,10 @@ function showNotchView(viewName) {
   for (const view of notchViews) {
     view.classList.toggle("active", view.dataset.notchView === nextView);
   }
+
+  if (nextView === "integrations") {
+    void refreshGmailIntegrationStatus();
+  }
 }
 
 function renderCursor() {
@@ -167,6 +173,52 @@ for (const button of notchBackButtons) {
   button.addEventListener("click", () => {
     showNotchView("home");
   });
+}
+
+if (gmailConnectButton) {
+  gmailConnectButton.addEventListener("click", async () => {
+    gmailConnectButton.disabled = true;
+    gmailConnectButton.textContent = "Opening";
+    setGmailIntegrationStatus("Waiting for Google...");
+    try {
+      const result = await ipcRenderer.invoke("assistant:gmail-connect");
+      setGmailIntegrationStatus(result?.email ? `Connected: ${result.email}` : result?.message || "Connected");
+      gmailConnectButton.textContent = "Reconnect";
+    } catch (error) {
+      setGmailIntegrationStatus(error.message || "Connect failed");
+      gmailConnectButton.textContent = "Connect";
+    } finally {
+      gmailConnectButton.disabled = false;
+    }
+  });
+}
+
+async function refreshGmailIntegrationStatus() {
+  if (!gmailIntegrationStatus || !gmailConnectButton) {
+    return;
+  }
+
+  try {
+    const status = await ipcRenderer.invoke("assistant:gmail-status");
+    if (status?.connected) {
+      setGmailIntegrationStatus(status.email ? `Connected: ${status.email}` : "Connected");
+      gmailConnectButton.textContent = "Reconnect";
+      return;
+    }
+
+    setGmailIntegrationStatus("Not connected");
+    gmailConnectButton.textContent = "Connect";
+  } catch {
+    setGmailIntegrationStatus("Status unavailable");
+    gmailConnectButton.textContent = "Connect";
+  }
+}
+
+function setGmailIntegrationStatus(text) {
+  if (!gmailIntegrationStatus) {
+    return;
+  }
+  gmailIntegrationStatus.textContent = String(text || "").slice(0, 70);
 }
 
 function setStatus(text) {
