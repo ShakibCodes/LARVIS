@@ -47,6 +47,8 @@ const LOCAL_CONVERSATION_CONTEXT = [
   /\b(my|our)\s+(subscribers|chat|audience|viewers|followers|stream)\b/,
   /\b(this|current)\s+(page|site|app|screen|window|tab)\b/,
 ];
+const WEB_CACHE_TTL_MS = 4 * 60 * 1000;
+const webAnswerCache = new Map();
 
 function extractWebKnowledgeIntent(transcript, context = null) {
   const normalized = normalizeTranscript(transcript)
@@ -90,6 +92,11 @@ function extractWebKnowledgeIntent(transcript, context = null) {
 
 async function answerWebKnowledgeQuestion(intent) {
   const query = buildSearchQuery(intent);
+  const cachedAnswer = getCachedWebAnswer(query);
+  if (cachedAnswer) {
+    return cachedAnswer;
+  }
+
   const searchResults = await searchDuckDuckGo(query);
   const sourceTexts = await collectSourceTexts(searchResults);
 
@@ -97,9 +104,38 @@ async function answerWebKnowledgeQuestion(intent) {
     return "I tried checking the web, but I could not get reliable source text for that right now.";
   }
 
-  return summarizeWithGroq(intent.query, sourceTexts, {
+  const answer = await summarizeWithGroq(intent.query, sourceTexts, {
     previousTopic: intent.previousTopic,
     resolvedQuery: intent.resolvedQuery,
+  });
+  setCachedWebAnswer(query, answer);
+  return answer;
+}
+
+function getCachedWebAnswer(query) {
+  const key = normalizeTranscript(query);
+  const cached = webAnswerCache.get(key);
+  if (!cached) {
+    return "";
+  }
+
+  if (Date.now() - cached.savedAt > WEB_CACHE_TTL_MS) {
+    webAnswerCache.delete(key);
+    return "";
+  }
+
+  return cached.answer;
+}
+
+function setCachedWebAnswer(query, answer) {
+  const key = normalizeTranscript(query);
+  if (!key || !answer) {
+    return;
+  }
+
+  webAnswerCache.set(key, {
+    answer,
+    savedAt: Date.now(),
   });
 }
 
@@ -130,7 +166,7 @@ async function searchDuckDuckGo(query) {
   const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   let match = resultRegex.exec(html);
 
-  while (match && results.length < 5) {
+  while (match && results.length < 4) {
     const url = normalizeSearchResultUrl(decodeHtml(match[1]));
     const title = decodeHtml(stripHtml(match[2]));
     if (url && title && !results.some((result) => result.url === url)) {
@@ -153,27 +189,27 @@ function normalizeSearchResultUrl(rawUrl) {
 }
 
 async function collectSourceTexts(searchResults) {
-  const sourceTexts = [];
+  const fetchedSources = await Promise.all(
+    searchResults.slice(0, 3).map(async (result) => {
+      const text = await fetchReadableText(result.url).catch(() => "");
+      if (!text || text.length < 240) {
+        return null;
+      }
 
-  for (const result of searchResults.slice(0, 4)) {
-    const text = await fetchReadableText(result.url).catch(() => "");
-    if (!text || text.length < 240) {
-      continue;
-    }
+      return {
+        title: result.title,
+        url: result.url,
+        text: text.slice(0, 2600),
+      };
+    }),
+  );
 
-    sourceTexts.push({
-      title: result.title,
-      url: result.url,
-      text: text.slice(0, 3200),
-    });
-  }
-
-  return sourceTexts;
+  return fetchedSources.filter(Boolean).slice(0, 2);
 }
 
 async function fetchReadableText(url) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6500);
+  const timeout = setTimeout(() => controller.abort(), 3500);
 
   try {
     const response = await fetch(url, {
