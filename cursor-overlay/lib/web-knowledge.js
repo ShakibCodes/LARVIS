@@ -49,7 +49,17 @@ const LOCAL_CONVERSATION_CONTEXT = [
   /\b(this|current)\s+(page|site|app|screen|window|tab)\b/,
 ];
 const WEB_CACHE_TTL_MS = 4 * 60 * 1000;
+const SOURCE_CACHE_TTL_MS = 12 * 60 * 1000;
+const WEB_FETCH_TIMEOUT_MS = 4200;
+const SEARCH_RESULT_LIMIT = 8;
+const SOURCE_FETCH_LIMIT = 5;
+const FINAL_SOURCE_LIMIT = 3;
+const MIN_SOURCE_TEXT_LENGTH = 180;
+const MAX_SOURCE_CHARS = 3600;
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const webAnswerCache = new Map();
+const sourceTextCache = new Map();
 
 function extractWebKnowledgeIntent(transcript, context = null) {
   const normalized = normalizeTranscript(transcript)
@@ -153,8 +163,7 @@ function buildSearchQuery(intent) {
 async function searchDuckDuckGo(query) {
   const response = await fetch(`https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
     headers: {
-      "User-Agent":
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "User-Agent": USER_AGENT,
     },
   });
 
@@ -167,11 +176,12 @@ async function searchDuckDuckGo(query) {
   const resultRegex = /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
   let match = resultRegex.exec(html);
 
-  while (match && results.length < 4) {
+  while (match && results.length < SEARCH_RESULT_LIMIT) {
     const url = normalizeSearchResultUrl(decodeHtml(match[1]));
     const title = decodeHtml(stripHtml(match[2]));
+    const snippet = extractResultSnippet(html, match.index);
     if (url && title && !results.some((result) => result.url === url)) {
-      results.push({ title, url });
+      results.push({ title, url, snippet });
     }
     match = resultRegex.exec(html);
   }
@@ -190,34 +200,64 @@ function normalizeSearchResultUrl(rawUrl) {
 }
 
 async function collectSourceTexts(searchResults) {
-  const fetchedSources = await Promise.all(
-    searchResults.slice(0, 3).map(async (result) => {
+  const readableCandidates = searchResults.filter((result) => isLikelyReadableUrl(result.url)).slice(0, SOURCE_FETCH_LIMIT);
+  const settledSources = await Promise.allSettled(
+    readableCandidates.map(async (result, index) => {
       const text = await fetchReadableText(result.url).catch(() => "");
-      if (!text || text.length < 240) {
+      if (!text || text.length < MIN_SOURCE_TEXT_LENGTH) {
         return null;
       }
 
       return {
         title: result.title,
         url: result.url,
-        text: text.slice(0, 2600),
+        snippet: result.snippet || "",
+        score: scoreSource(result, text, index),
+        text: text.slice(0, MAX_SOURCE_CHARS),
       };
     }),
   );
 
-  return fetchedSources.filter(Boolean).slice(0, 2);
+  const fetchedSources = settledSources
+    .filter((result) => result.status === "fulfilled" && result.value)
+    .map((result) => result.value)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, FINAL_SOURCE_LIMIT);
+
+  if (fetchedSources.length >= 2) {
+    return fetchedSources;
+  }
+
+  const snippetSources = searchResults
+    .filter((result) => result.snippet && result.snippet.length >= 80)
+    .filter((result) => !fetchedSources.some((source) => source.url === result.url))
+    .slice(0, FINAL_SOURCE_LIMIT - fetchedSources.length)
+    .map((result) => ({
+      title: result.title,
+      url: result.url,
+      snippet: result.snippet,
+      score: 0.25,
+      text: result.snippet,
+    }));
+
+  return [...fetchedSources, ...snippetSources].slice(0, FINAL_SOURCE_LIMIT);
 }
 
 async function fetchReadableText(url) {
+  const cached = getCachedSourceText(url);
+  if (cached) {
+    return cached;
+  }
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3500);
+  const timeout = setTimeout(() => controller.abort(), WEB_FETCH_TIMEOUT_MS);
 
   try {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "User-Agent": USER_AGENT,
+        Accept: "text/html,text/plain;q=0.9,*/*;q=0.6",
       },
     });
 
@@ -231,9 +271,9 @@ async function fetchReadableText(url) {
     }
 
     const raw = await response.text();
-    return stripHtml(raw)
-      .replace(/\s+/g, " ")
-      .trim();
+    const readableText = extractReadableText(raw);
+    setCachedSourceText(url, readableText);
+    return readableText;
   } finally {
     clearTimeout(timeout);
   }
@@ -246,7 +286,10 @@ async function summarizeWithGroq(question, sourceTexts, context = {}) {
   }
 
   const sourceBlock = sourceTexts
-    .map((source, index) => `Source ${index + 1}: ${source.title}\nURL: ${source.url}\nText: ${source.text}`)
+    .map(
+      (source, index) =>
+        `Source ${index + 1}: ${source.title}\nURL: ${source.url}\nSnippet: ${source.snippet || "none"}\nText: ${source.text}`,
+    )
     .join("\n\n");
 
   const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -262,7 +305,7 @@ async function summarizeWithGroq(question, sourceTexts, context = {}) {
         {
           role: "system",
           content:
-            "Answer like a concise voice assistant. Use only the provided web sources. If sources are weak or disagree, say that briefly. Keep it under 90 words. Do not mention URLs. If the user asks a follow-up with pronouns, resolve them using the provided conversation context.",
+            "Answer like a concise, natural voice assistant. Use only the provided web sources. Prefer fresh, specific facts. If sources are weak, partial, or disagree, say that briefly. Keep it under 90 words. Do not mention URLs. If the user asks a follow-up with pronouns, resolve them using the provided conversation context.",
         },
         {
           role: "user",
@@ -292,6 +335,104 @@ function stripHtml(html) {
   );
 }
 
+function extractReadableText(rawHtml) {
+  const html = String(rawHtml || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<nav[\s\S]*?<\/nav>/gi, " ")
+    .replace(/<header[\s\S]*?<\/header>/gi, " ")
+    .replace(/<footer[\s\S]*?<\/footer>/gi, " ")
+    .replace(/<aside[\s\S]*?<\/aside>/gi, " ");
+  const focusedHtml = extractFirstTagContent(html, "article") || extractFirstTagContent(html, "main") || html;
+  return stripHtml(focusedHtml)
+    .replace(/\b(cookie|privacy policy|subscribe|sign in|log in)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractFirstTagContent(html, tagName) {
+  const match = String(html || "").match(new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i"));
+  return match?.[1] || "";
+}
+
+function extractResultSnippet(html, startIndex) {
+  const resultChunk = String(html || "").slice(startIndex, startIndex + 3500);
+  const snippetMatch =
+    resultChunk.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/a>/i) ||
+    resultChunk.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/div>/i);
+  return snippetMatch ? decodeHtml(stripHtml(snippetMatch[1])).replace(/\s+/g, " ").trim() : "";
+}
+
+function isLikelyReadableUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+    const pathname = parsed.pathname.toLowerCase();
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return false;
+    }
+    if (/\.(pdf|jpg|jpeg|png|gif|webp|svg|mp4|mp3|zip|rar|7z|exe|dmg)$/i.test(pathname)) {
+      return false;
+    }
+    if (/(accounts|login|signin|auth|checkout)\./i.test(hostname) || /\/(login|signin|account|checkout)\b/i.test(pathname)) {
+      return false;
+    }
+    if (/^(x\.com|twitter\.com|facebook\.com|instagram\.com|tiktok\.com|pinterest\.com)$/.test(hostname)) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function scoreSource(result, text, index) {
+  let score = Math.max(0, 1 - index * 0.12);
+  const url = String(result?.url || "");
+  const title = String(result?.title || "");
+  const content = String(text || "");
+  if (/\b(wikipedia|reuters|apnews|bbc|theverge|techcrunch|official|gov|edu)\b/i.test(url)) {
+    score += 0.18;
+  }
+  if (title.length > 8) {
+    score += 0.05;
+  }
+  if (content.length > 1400) {
+    score += 0.12;
+  }
+  if (/\b(updated|published|reported|according to|announced)\b/i.test(content)) {
+    score += 0.1;
+  }
+  return score;
+}
+
+function getCachedSourceText(url) {
+  const cached = sourceTextCache.get(url);
+  if (!cached) {
+    return "";
+  }
+
+  if (Date.now() - cached.savedAt > SOURCE_CACHE_TTL_MS) {
+    sourceTextCache.delete(url);
+    return "";
+  }
+
+  return cached.text;
+}
+
+function setCachedSourceText(url, text) {
+  if (!url || !text) {
+    return;
+  }
+
+  sourceTextCache.set(url, {
+    savedAt: Date.now(),
+    text,
+  });
+}
+
 function decodeHtml(value) {
   return String(value || "")
     .replace(/&amp;/g, "&")
@@ -304,6 +445,13 @@ function decodeHtml(value) {
 }
 
 module.exports = {
+  _test: {
+    collectSourceTexts,
+    extractReadableText,
+    extractResultSnippet,
+    isLikelyReadableUrl,
+    normalizeSearchResultUrl,
+  },
   answerWebKnowledgeQuestion,
   extractWebKnowledgeIntent,
 };

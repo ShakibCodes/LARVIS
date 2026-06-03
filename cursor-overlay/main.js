@@ -11,6 +11,7 @@ const { answerBuddyChat } = require("./lib/buddy-chat");
 const { createConversationContext } = require("./lib/conversation-context");
 const { createConversationRouter } = require("./lib/conversation-router");
 const { createActionExecutor } = require("./lib/action-executor");
+const { createDecisionLog } = require("./lib/decision-log");
 const {
   planActionWithGroq,
   planVisualElementLocationWithGroq,
@@ -30,6 +31,7 @@ let latestCursorPoint = { x: 0, y: 0 };
 let overlayBounds = null;
 let isNotchInteractive = false;
 const conversationContext = createConversationContext();
+const decisionLog = createDecisionLog();
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
@@ -58,6 +60,7 @@ const conversationRouter = createConversationRouter({
   applyCursorColor,
   browserCommands,
   conversationContext,
+  decisionLog,
   overlayWindowProvider: () => overlayWindow,
   planAction: planActionWithGroq,
   speakInterim: speakInterimMessage,
@@ -247,6 +250,10 @@ function registerIpcHandlers() {
       y: latestCursorPoint.y,
       capturedAt: new Date().toISOString(),
     };
+  });
+
+  ipcMain.handle("assistant:decision-log", () => {
+    return decisionLog.list();
   });
 
   ipcMain.handle("assistant:listen-and-execute", async (_event, payload) => {

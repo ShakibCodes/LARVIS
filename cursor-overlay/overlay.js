@@ -26,9 +26,17 @@ let currentAssistantResolve = null;
 let currentAssistantCleanup = null;
 let isGuidedTourRunning = false;
 let isGuidedControlActive = false;
+let listenSessionId = 0;
 let tooltipText = "";
 let isNotchInteractive = false;
 let activeNotchView = "home";
+const VOICE_STATES = {
+  IDLE: "idle",
+  LISTENING: "listening",
+  PROCESSING: "processing",
+  SPEAKING: "speaking",
+};
+let voiceState = VOICE_STATES.IDLE;
 
 const followOffsetX = 42;
 const followOffsetY = 28;
@@ -200,6 +208,21 @@ function setExecutingState(nextState) {
   cursor.classList.remove("executing");
 }
 
+function setVoiceState(nextState, statusText = "") {
+  voiceState = nextState;
+
+  if (statusText) {
+    setStatus(statusText);
+  }
+
+  if (nextState === VOICE_STATES.PROCESSING) {
+    setExecutingState(true);
+    return;
+  }
+
+  setExecutingState(false);
+}
+
 function startVoiceVisualizer(stream) {
   if (!cursor) {
     return () => {};
@@ -261,7 +284,9 @@ async function playAssistantAudio(tts) {
   }
 
   try {
+    const previousVoiceState = voiceState;
     stopAssistantAudio({ interrupted: false });
+    setVoiceState(VOICE_STATES.SPEAKING);
     const mimeType = tts.mimeType || "audio/mpeg";
     const binary = atob(tts.audioBase64);
     const bytes = new Uint8Array(binary.length);
@@ -282,10 +307,16 @@ async function playAssistantAudio(tts) {
 
       const onEnded = () => {
         cleanup();
+        if (voiceState === VOICE_STATES.SPEAKING) {
+          setVoiceState(previousVoiceState === VOICE_STATES.PROCESSING ? VOICE_STATES.PROCESSING : VOICE_STATES.IDLE);
+        }
         resolve({ interrupted: false });
       };
       const onError = () => {
         cleanup();
+        if (voiceState === VOICE_STATES.SPEAKING) {
+          setVoiceState(previousVoiceState === VOICE_STATES.PROCESSING ? VOICE_STATES.PROCESSING : VOICE_STATES.IDLE);
+        }
         reject(new Error("Failed to play assistant audio."));
       };
       const cleanup = () => {
@@ -314,6 +345,7 @@ async function playAssistantAudio(tts) {
     });
   } catch (error) {
     setStatus(`Audio playback issue: ${error.message}`);
+    setVoiceState(VOICE_STATES.IDLE);
     return { interrupted: false };
   }
 }
@@ -523,23 +555,34 @@ async function listenOnce() {
     return;
   }
 
+  const sessionId = listenSessionId + 1;
+  listenSessionId = sessionId;
   isListening = true;
 
   try {
-    setStatus("Listening... speak now.");
+    setVoiceState(VOICE_STATES.LISTENING, "Listening... speak now.");
     const audioPayload = await recordMicrophoneUntilSilence();
+    if (sessionId !== listenSessionId) {
+      return;
+    }
 
-    setStatus("Transcribing with Groq Whisper...");
+    setVoiceState(VOICE_STATES.PROCESSING, "Transcribing with Groq Whisper...");
     await refreshScreenContext();
     const cursorContext = await ipcRenderer.invoke("assistant:cursor-context");
+    if (sessionId !== listenSessionId) {
+      return;
+    }
 
-    setExecutingState(true);
+    setVoiceState(VOICE_STATES.PROCESSING);
     const result = await ipcRenderer.invoke("assistant:listen-and-execute", {
       audioBase64: audioPayload.audioBase64,
       mimeType: audioPayload.mimeType,
       screenFrame: latestScreenFrame,
       cursorContext,
     });
+    if (sessionId !== listenSessionId) {
+      return;
+    }
 
     if (!result.ok) {
       setStatus(result.message);
@@ -552,15 +595,19 @@ async function listenOnce() {
   } catch (error) {
     setStatus(`Voice error: ${error.message}`);
   } finally {
-    setExecutingState(false);
-    isListening = false;
+    if (sessionId === listenSessionId) {
+      setVoiceState(VOICE_STATES.IDLE);
+      isListening = false;
+    }
   }
 }
 
 ipcRenderer.on("assistant:toggle-listening", () => {
   if (currentAssistantAudio) {
+    listenSessionId += 1;
+    isListening = false;
     stopAssistantAudio({ interrupted: true });
-    setStatus("Listening... go ahead.");
+    setVoiceState(VOICE_STATES.LISTENING, "Listening... go ahead.");
     setTimeout(() => {
       void listenOnce();
     }, 90);
