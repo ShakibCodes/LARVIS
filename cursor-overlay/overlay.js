@@ -182,7 +182,7 @@ if (gmailConnectButton) {
     setGmailIntegrationStatus("Waiting for Google...");
     try {
       const result = await ipcRenderer.invoke("assistant:gmail-connect");
-      setGmailIntegrationStatus(result?.email ? `Connected: ${result.email}` : result?.message || "Connected");
+      setGmailIntegrationStatus(result?.email ? `Connected: ${result.email}` : result?.message || "Connected", true);
       gmailConnectButton.textContent = "Reconnect";
     } catch (error) {
       setGmailIntegrationStatus(error.message || "Connect failed");
@@ -201,12 +201,12 @@ async function refreshGmailIntegrationStatus() {
   try {
     const status = await ipcRenderer.invoke("assistant:gmail-status");
     if (status?.connected) {
-      setGmailIntegrationStatus(status.email ? `Connected: ${status.email}` : "Connected");
+      setGmailIntegrationStatus(status.email ? `Connected: ${status.email}` : "Connected", true);
       gmailConnectButton.textContent = "Reconnect";
       return;
     }
 
-    setGmailIntegrationStatus("Not connected");
+    setGmailIntegrationStatus("Not connected", false);
     gmailConnectButton.textContent = "Connect";
   } catch {
     setGmailIntegrationStatus("Status unavailable");
@@ -214,11 +214,12 @@ async function refreshGmailIntegrationStatus() {
   }
 }
 
-function setGmailIntegrationStatus(text) {
+function setGmailIntegrationStatus(text, isConnected = false) {
   if (!gmailIntegrationStatus) {
     return;
   }
   gmailIntegrationStatus.textContent = String(text || "").slice(0, 70);
+  gmailIntegrationStatus.classList.toggle("connected", isConnected);
 }
 
 function setStatus(text) {

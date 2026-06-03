@@ -90,11 +90,16 @@
       }
 
       #assistant-notch.expanded {
-        --notch-width: 390px;
-        --notch-height: 184px;
-        border-radius: 0 0 10px 10px;
-        background: rgba(7, 7, 8, 0.97);
-        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+        --notch-width: 430px;
+        --notch-height: 254px;
+        border-color: rgba(244, 244, 245, 0.18);
+        border-radius: 0 0 18px 18px;
+        background:
+          radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.12), transparent 34%),
+          linear-gradient(180deg, rgba(24, 24, 27, 0.98), rgba(5, 5, 6, 0.98));
+        box-shadow:
+          0 22px 60px rgba(0, 0, 0, 0.52),
+          inset 0 1px 0 rgba(255, 255, 255, 0.08);
         opacity: 1;
       }
 
@@ -117,7 +122,7 @@
       .notch-content {
         display: grid;
         gap: 14px;
-        padding: 24px 18px 18px;
+        padding: 25px 18px 18px;
         opacity: 0;
         transform: translateY(-8px) scale(0.98);
         transition:
@@ -133,7 +138,7 @@
 
       .notch-view {
         display: none;
-        gap: 14px;
+        gap: 12px;
       }
 
       .notch-view.active {
@@ -150,6 +155,22 @@
           700 12px/1.1 "Segoe UI",
           system-ui,
           sans-serif;
+      }
+
+      .notch-brand {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .notch-orb {
+        width: 21px;
+        height: 21px;
+        border-radius: 8px;
+        background:
+          radial-gradient(circle at 32% 24%, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.18) 18%, transparent 36%),
+          linear-gradient(135deg, #fafafa, #71717a 48%, #18181b);
+        box-shadow: 0 0 18px rgba(255, 255, 255, 0.16);
       }
 
       .notch-title-row {
@@ -206,13 +227,15 @@
         text-align: left;
         min-height: 54px;
         border: 1px solid rgba(212, 212, 216, 0.18);
-        border-radius: 6px;
-        background: rgba(24, 24, 27, 0.88);
+        border-radius: 11px;
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.09), transparent 35%),
+          rgba(24, 24, 27, 0.88);
         color: #f4f4f5;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        padding: 0 12px;
+        padding: 0 13px;
         font:
           700 11px/1.1 "Segoe UI",
           system-ui,
@@ -222,7 +245,10 @@
 
       .notch-tile:hover {
         border-color: rgba(244, 244, 245, 0.32);
-        background: rgba(39, 39, 42, 0.94);
+        background:
+          radial-gradient(circle at top left, rgba(255, 255, 255, 0.13), transparent 36%),
+          rgba(39, 39, 42, 0.94);
+        transform: translateY(-1px);
       }
 
       .notch-tile span {
@@ -236,23 +262,40 @@
 
       .integration-list {
         display: grid;
-        gap: 8px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 9px;
       }
 
       .integration-item {
-        display: flex;
+        position: relative;
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr);
+        grid-template-rows: 1fr auto;
+        column-gap: 10px;
+        row-gap: 8px;
         align-items: center;
-        justify-content: space-between;
-        min-height: 32px;
-        border: 1px solid rgba(212, 212, 216, 0.14);
-        border-radius: 6px;
-        background: rgba(24, 24, 27, 0.72);
+        min-height: 72px;
+        border: 1px solid rgba(212, 212, 216, 0.13);
+        border-radius: 14px;
+        background:
+          radial-gradient(circle at 8% 0%, var(--integration-glow, rgba(255, 255, 255, 0.08)), transparent 44%),
+          linear-gradient(145deg, rgba(39, 39, 42, 0.9), rgba(12, 12, 14, 0.92));
         color: #e4e4e7;
-        padding: 0 10px;
+        padding: 11px;
         font:
           700 10px/1.1 "Segoe UI",
           system-ui,
           sans-serif;
+        overflow: hidden;
+        transition:
+          transform 150ms ease,
+          border-color 150ms ease,
+          background 150ms ease;
+      }
+
+      .integration-item:hover {
+        border-color: rgba(244, 244, 245, 0.26);
+        transform: translateY(-1px);
       }
 
       .integration-item span {
@@ -266,15 +309,82 @@
       .integration-meta {
         display: grid;
         gap: 2px;
+        min-width: 0;
+      }
+
+      .integration-title {
+        overflow: hidden;
+        color: #f4f4f5;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .integration-logo {
+        width: 34px;
+        height: 34px;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      .integration-logo svg {
+        width: 22px;
+        height: 22px;
+        display: block;
+      }
+
+      .integration-logo.dark {
+        background: rgba(24, 24, 27, 0.95);
+      }
+
+      .integration-logo.soft {
+        background: rgba(244, 244, 245, 0.08);
+      }
+
+      .integration-chip {
+        justify-self: start;
+        grid-column: 1 / 3;
+        min-height: 18px;
+        max-width: 100%;
+        overflow: hidden;
+        border: 1px solid rgba(161, 161, 170, 0.16);
+        border-radius: 999px;
+        padding: 0 8px;
+        color: #a1a1aa;
+        background: rgba(24, 24, 27, 0.76);
+        font:
+          700 8px/18px "Segoe UI",
+          system-ui,
+          sans-serif;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .integration-chip.connected {
+        border-color: rgba(34, 197, 94, 0.28);
+        color: #86efac;
+        background: rgba(20, 83, 45, 0.28);
+      }
+
+      .integration-chip.coming-soon {
+        border-color: rgba(250, 204, 21, 0.22);
+        color: #fde68a;
+        background: rgba(113, 63, 18, 0.22);
       }
 
       .integration-action {
         appearance: none;
-        min-width: 68px;
-        height: 23px;
+        position: absolute;
+        right: 10px;
+        top: 10px;
+        min-width: 58px;
+        height: 21px;
         border: 1px solid rgba(244, 244, 245, 0.2);
-        border-radius: 5px;
-        background: rgba(63, 63, 70, 0.86);
+        border-radius: 999px;
+        background: rgba(244, 244, 245, 0.09);
         color: #f4f4f5;
         font:
           700 9px/1 "Segoe UI",
@@ -284,7 +394,7 @@
       }
 
       .integration-action:hover {
-        background: rgba(82, 82, 91, 0.96);
+        background: rgba(244, 244, 245, 0.16);
       }
 
       #secondary-cursor.clicking {
@@ -418,7 +528,10 @@
       <div class="notch-content">
         <div class="notch-view active" data-notch-view="home">
           <div class="notch-header">
-            <strong>AI Buddy</strong>
+            <div class="notch-brand">
+              <span class="notch-orb" aria-hidden="true"></span>
+              <strong>AI Buddy</strong>
+            </div>
             <div id="assistant-status" class="notch-status">Ready</div>
           </div>
           <div class="notch-grid">
@@ -436,12 +549,84 @@
             <div class="notch-status">Preview</div>
           </div>
           <div class="integration-list">
-            <div class="integration-item">
-              <div class="integration-meta">Gmail<span id="gmail-integration-status">Not connected</span></div>
+            <div class="integration-item" style="--integration-glow: rgba(234, 67, 53, 0.18)">
+              <div class="integration-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  <path fill="#EA4335" d="M3 6.5 12 13l9-6.5V18a2 2 0 0 1-2 2h-2V10.3L12 14.1 7 10.3V20H5a2 2 0 0 1-2-2V6.5Z" />
+                  <path fill="#FBBC04" d="M3 6.5V6a2 2 0 0 1 3.2-1.6L12 8.8l5.8-4.4A2 2 0 0 1 21 6v.5L12 13 3 6.5Z" />
+                  <path fill="#34A853" d="M17 20h2a2 2 0 0 0 2-2V6.5l-4 2.9V20Z" />
+                  <path fill="#4285F4" d="M3 6.5V18a2 2 0 0 0 2 2h2V9.4L3 6.5Z" />
+                </svg>
+              </div>
+              <div class="integration-meta">
+                <div class="integration-title">Gmail</div>
+                <span>Read, summarize, draft</span>
+              </div>
               <button id="gmail-connect-button" class="integration-action" type="button">Connect</button>
+              <div id="gmail-integration-status" class="integration-chip">Not connected</div>
             </div>
-            <div class="integration-item">Web Knowledge<span>Search and summarize</span></div>
-            <div class="integration-item">Voice Stack<span>Groq + ElevenLabs</span></div>
+            <div class="integration-item" style="--integration-glow: rgba(66, 133, 244, 0.18)">
+              <div class="integration-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  <rect x="4" y="5" width="16" height="15" rx="3" fill="#fff" />
+                  <path fill="#4285F4" d="M7 2h2v4H7zM15 2h2v4h-2zM4 8h16V6a3 3 0 0 0-3-3H7a3 3 0 0 0-3 3v2Z" />
+                  <path fill="#34A853" d="M4 9h5v11H7a3 3 0 0 1-3-3V9Z" />
+                  <path fill="#FBBC04" d="M9 9h5v11H9z" />
+                  <path fill="#EA4335" d="M14 9h6v8a3 3 0 0 1-3 3h-3V9Z" />
+                  <path fill="#1a73e8" d="M8 12h8v2H8zM8 16h5v2H8z" />
+                </svg>
+              </div>
+              <div class="integration-meta">
+                <div class="integration-title">Google Calendar</div>
+                <span>Meetings and schedule</span>
+              </div>
+              <div class="integration-chip coming-soon">Coming next</div>
+            </div>
+            <div class="integration-item" style="--integration-glow: rgba(52, 168, 83, 0.18)">
+              <div class="integration-logo" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  <path fill="#34A853" d="M8.2 3h7.6l6 10.4-3.8 6.6H10.4l3.8-6.6L8.2 3Z" />
+                  <path fill="#FBBC04" d="M8.2 3 2.2 13.4 6 20h7.6L6 6.8 8.2 3Z" />
+                  <path fill="#4285F4" d="M10.4 20H18l3.8-6.6h-7.6L10.4 20Z" />
+                </svg>
+              </div>
+              <div class="integration-meta">
+                <div class="integration-title">Google Drive</div>
+                <span>Docs and files</span>
+              </div>
+              <div class="integration-chip coming-soon">Planned</div>
+            </div>
+            <div class="integration-item" style="--integration-glow: rgba(255, 255, 255, 0.13)">
+              <div class="integration-logo dark" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  <path fill="#f4f4f5" d="M12 2a10 10 0 0 0-3.2 19.5c.5.1.7-.2.7-.5v-1.9c-2.8.6-3.4-1.2-3.4-1.2-.5-1.1-1.1-1.4-1.1-1.4-.9-.6.1-.6.1-.6 1 .1 1.5 1 1.5 1 .9 1.5 2.4 1.1 2.9.8.1-.7.4-1.1.7-1.3-2.2-.3-4.5-1.1-4.5-4.9 0-1.1.4-2 1-2.7-.1-.3-.4-1.3.1-2.7 0 0 .8-.3 2.8 1a9.6 9.6 0 0 1 5 0c1.9-1.3 2.8-1 2.8-1 .5 1.4.2 2.4.1 2.7.6.7 1 1.6 1 2.7 0 3.8-2.3 4.6-4.5 4.9.4.3.8 1 .8 2V21c0 .3.2.6.8.5A10 10 0 0 0 12 2Z" />
+                </svg>
+              </div>
+              <div class="integration-meta">
+                <div class="integration-title">GitHub</div>
+                <span>Repos and issues</span>
+              </div>
+              <div class="integration-chip coming-soon">Planned</div>
+            </div>
+            <div class="integration-item" style="--integration-glow: rgba(74, 21, 75, 0.22)">
+              <div class="integration-logo soft" aria-hidden="true">
+                <svg viewBox="0 0 24 24" role="img">
+                  <rect x="10" y="2" width="4" height="9" rx="2" fill="#36C5F0" />
+                  <rect x="13" y="10" width="9" height="4" rx="2" fill="#2EB67D" />
+                  <rect x="10" y="13" width="4" height="9" rx="2" fill="#ECB22E" />
+                  <rect x="2" y="10" width="9" height="4" rx="2" fill="#E01E5A" />
+                  <rect x="5" y="2" width="4" height="7" rx="2" fill="#2EB67D" />
+                  <rect x="15" y="5" width="7" height="4" rx="2" fill="#ECB22E" />
+                  <rect x="15" y="15" width="4" height="7" rx="2" fill="#E01E5A" />
+                  <rect x="2" y="15" width="7" height="4" rx="2" fill="#36C5F0" />
+                </svg>
+              </div>
+              <div class="integration-meta">
+                <div class="integration-title">Slack</div>
+                <span>Team messages</span>
+              </div>
+              <div class="integration-chip coming-soon">Planned</div>
+            </div>
           </div>
         </div>
       </div>
