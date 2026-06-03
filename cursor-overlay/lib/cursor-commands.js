@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { buildReply } = require("./reply-builder");
-const { normalizeTranscript } = require("./text-utils");
+const { detectResponseLanguage, normalizeTranscript } = require("./text-utils");
 
 const CURSOR_COLORS = [
   { color: "blue", aliases: ["blue", "default"] },
@@ -10,18 +10,20 @@ const CURSOR_COLORS = [
 ];
 
 function extractCursorColorIntent(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!/\b(cursor|pointer|arrow)\b/.test(normalized)) {
+  if (!/\b(cursor|pointer|arrow)\b/.test(normalized) && !/(कर्सर|کرسر)/.test(normalized)) {
     return null;
   }
 
   const hasColorIntent =
-    /\b(change|make|set|turn|switch)\b/.test(normalized) ||
-    /\bcolor|colour|theme\b/.test(normalized);
+    /\b(change|make|set|turn|switch|karo|kar do|badlo|badal|change karo)\b/.test(normalized) ||
+    /\b(color|colour|theme|rang)\b/.test(normalized) ||
+    /(रंग|बदल|بدل|رنگ)/.test(normalized);
 
   if (!hasColorIntent) {
     return null;
@@ -32,6 +34,7 @@ function extractCursorColorIntent(transcript) {
       return {
         color: option.color,
         displayName: option.color[0].toUpperCase() + option.color.slice(1),
+        responseLanguage,
       };
     }
   }
@@ -49,7 +52,7 @@ function applyCursorColor(overlayWindow, intent) {
   });
 
   return {
-    message: buildReply("cursorColor", { color: intent.displayName }),
+    message: buildReply("cursorColor", { color: intent.displayName }, intent.responseLanguage || "english"),
   };
 }
 

@@ -4,9 +4,12 @@ const { createConversationContext } = require("../lib/conversation-context");
 const { createConversationRouter } = require("../lib/conversation-router");
 const { createDecisionLog } = require("../lib/decision-log");
 const {
+  createBrowserCommandRunner,
   extractBrowserTaskIntent,
   extractMultipleBrowserTaskIntents,
 } = require("../lib/browser-commands");
+const { buildReply } = require("../lib/reply-builder");
+const { detectResponseLanguage } = require("../lib/text-utils");
 const { _test, extractWebKnowledgeIntent } = require("../lib/web-knowledge");
 
 function createTestRouter() {
@@ -73,6 +76,22 @@ async function run() {
     ["youtube", "linkedin", "github", "gmail"],
     "multi-open should extract all requested sites once",
   );
+  assert.strictEqual(detectResponseLanguage("gmail kholo yaar"), "hinglish");
+  assert.strictEqual(detectResponseLanguage("\u091c\u0940\u092e\u0947\u0932 \u0916\u094b\u0932\u094b"), "hindi");
+  assert.strictEqual(detectResponseLanguage("\u062c\u06cc \u0645\u06cc\u0644 \u06a9\u06be\u0648\u0644\u0648"), "urdu");
+  assert.strictEqual(extractBrowserTaskIntent("gmail kholo")?.responseLanguage, "hinglish");
+
+  const openedUrls = [];
+  const realBrowserCommands = createBrowserCommandRunner({
+    openExternal: (url) => openedUrls.push(url),
+  });
+  const hinglishOpenMessage = await realBrowserCommands.openBrowserTask(extractBrowserTaskIntent("gmail kholo"));
+  assert.strictEqual(openedUrls[0], "https://mail.google.com");
+  assert.match(hinglishOpenMessage, /(khol|open|aa raha)/i);
+
+  assert.match(buildReply("open", { target: "Gmail" }, "hindi"), /(\u0916\u094b\u0932|\u0906 \u0930\u0939\u093e)/);
+  assert.match(buildReply("open", { target: "Gmail" }, "urdu"), /(\u06a9\u06be\u0648\u0644|\u0622 \u0631\u06c1\u0627)/);
+  assert.match(buildReply("open", { target: "Gmail" }, "hinglish"), /(khol|open|aa raha)/i);
 
   const chatRouter = createTestRouter();
   const chatResult = await chatRouter.router.resolve('Hey I am on YouTube and I am live, can you say "hi" to my subscribers', {});
@@ -99,6 +118,17 @@ async function run() {
   assert.strictEqual(resolved.isFollowUp, true);
   assert.match(resolved.query, /MrBeast/);
   assert.ok(extractWebKnowledgeIntent("Is he a billionaire?", resolved), "pronoun follow-up should route to web");
+  assert.strictEqual(extractWebKnowledgeIntent("mrbeast kaun hai")?.responseLanguage, "hinglish");
+  assert.strictEqual(
+    extractWebKnowledgeIntent(
+      "\u092e\u093f\u0938\u094d\u091f\u0930\u092c\u0940\u0938\u094d\u091f \u0915\u094c\u0928 \u0939\u0948",
+    )?.responseLanguage,
+    "hindi",
+  );
+  assert.strictEqual(
+    extractWebKnowledgeIntent("\u0645\u0633\u0679\u0631 \u0628\u06cc\u0633\u0679 \u06a9\u0648\u0646 \u06c1\u06d2")?.responseLanguage,
+    "urdu",
+  );
 
   const articleText = _test.extractReadableText(`
     <html><body><nav>menu</nav><article><h1>Title</h1><p>Reliable article text about MrBeast.</p></article></body></html>

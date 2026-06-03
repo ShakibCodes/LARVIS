@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { escapeRegExp, normalizeTranscript } = require("./text-utils");
+const { detectResponseLanguage, escapeRegExp, normalizeTranscript } = require("./text-utils");
 const { buildReply, formatList } = require("./reply-builder");
 
 const BROWSER_SITE_RULES = [
@@ -125,8 +125,9 @@ const BROWSER_SITE_RULES = [
 ];
 
 function extractBrowserTaskIntent(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
   if (!normalized) {
@@ -158,7 +159,8 @@ function extractBrowserTaskIntent(transcript) {
   const escapedAlias = escapeRegExp(matchedAlias);
   candidate = candidate.replace(new RegExp(`\\b(on|in)\\s+${escapedAlias}\\b`, "g"), " ");
   candidate = candidate.replace(new RegExp(`\\b${escapedAlias}\\b`, "g"), " ");
-  candidate = candidate.replace(/\b(open|go to|launch|start)\b/g, " ");
+  candidate = candidate.replace(/\b(open|go to|launch|start|kholo|khol|khol do|open kar|open karo|chalao|chala|chalaye|kholiye|chalu karo)\b/g, " ");
+  candidate = candidate.replace(/(खोलो|खोल दो|चालू करो|کھولو|کھول دو|چلاو|چلاؤ)/g, " ");
   candidate = candidate.replace(/\b(i want to|i wanna|i would like to|can you|please|for me)\b/g, " ");
   candidate = candidate.replace(/\b(search( for)?|play|listen( to)?|watch|buy|order|find|show|look up)\b/g, " ");
   candidate = candidate.replace(/\b(song|songs|music|videos?|about|for)\b/g, " ");
@@ -166,6 +168,7 @@ function extractBrowserTaskIntent(transcript) {
 
   const query = candidate.length >= 2 ? candidate : "";
   return {
+    responseLanguage,
     site: matchedRule.key,
     query,
     rule: matchedRule,
@@ -173,8 +176,9 @@ function extractBrowserTaskIntent(transcript) {
 }
 
 function extractMultipleBrowserTaskIntents(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s.-]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s.-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -188,6 +192,7 @@ function extractMultipleBrowserTaskIntents(transcript) {
     if (aliasMatch) {
       matches.push({
         index: aliasMatch.index,
+        responseLanguage,
         site: rule.key,
         query: "",
         rule,
@@ -219,19 +224,28 @@ function extractMultipleBrowserTaskIntents(transcript) {
 
 function hasOpenIntent(normalized) {
   return (
-    /\b(open|launch|start)\b/.test(normalized) ||
-    /\bgo to\b/.test(normalized)
+    /\b(open|launch|start|kholo|khol|chalao|chala|chalaye|kholiye)\b/.test(normalized) ||
+    /\b(go to|khol do|open kar|open karo|chalu karo)\b/.test(normalized) ||
+    /(खोलो|खोल दो|चालू करो|کھولو|کھول دو|چلاو|چلاؤ)/.test(normalized)
   );
 }
 
 function hasBrowserTaskIntent(normalized, matchedAlias) {
   const alias = escapeRegExp(matchedAlias);
 
-  if (new RegExp(`\\b(open|launch|start)\\b.{0,24}\\b${alias}\\b`).test(normalized)) {
+  if (new RegExp(`\\b(open|launch|start|kholo|khol|chalao|chala|chalaye|kholiye)\\b.{0,24}\\b${alias}\\b`).test(normalized)) {
     return true;
   }
 
-  if (new RegExp(`\\bgo to\\b.{0,24}\\b${alias}\\b`).test(normalized)) {
+  if (new RegExp(`\\b(go to|khol do|open kar|open karo|chalu karo)\\b.{0,24}\\b${alias}\\b`).test(normalized)) {
+    return true;
+  }
+
+  if (new RegExp(`\\b${alias}\\b.{0,24}\\b(kholo|khol|khol do|open kar|open karo|chalao|chalu karo)\\b`).test(normalized)) {
+    return true;
+  }
+
+  if (new RegExp(`\\b${alias}\\b.{0,24}(खोलो|खोल दो|चालू करो|کھولو|کھول دو|چلاو|چلاؤ)`).test(normalized)) {
     return true;
   }
 
@@ -272,11 +286,12 @@ function findFirstAliasMatch(normalized, aliases) {
 }
 
 function extractGenericOpenWebsiteIntent(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s.-]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s.-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
-  const match = normalized.match(/^(?:please\s+)?(?:open|go to|launch|start)\s+([a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?:\s+for me)?$/);
+  const match = normalized.match(/^(?:please\s+)?(?:open|go to|launch|start|kholo|khol|khol do|open kar|open karo)\s+([a-z0-9][a-z0-9.-]+\.[a-z]{2,})(?:\s+for me)?$/);
   if (!match) {
     return null;
   }
@@ -288,12 +303,13 @@ function extractGenericOpenWebsiteIntent(transcript) {
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 
-  return { url, displayName };
+  return { responseLanguage, url, displayName };
 }
 
 function extractGenericOpenWebsiteIntents(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s.-]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s.-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -308,6 +324,7 @@ function extractGenericOpenWebsiteIntents(transcript) {
     const hostname = match[1].replace(/^www\./, "");
     matches.push({
       index: match.index,
+      responseLanguage,
       url: `https://${hostname}`,
       displayName: hostname
         .split(".")[0]
@@ -321,11 +338,11 @@ function extractGenericOpenWebsiteIntents(transcript) {
 }
 
 function createBrowserCommandRunner(shell) {
-  async function openYouTubeTopResultOrSearch(query) {
+  async function openYouTubeTopResultOrSearch(query, responseLanguage = "english") {
     const cleanQuery = String(query || "").trim();
     if (!cleanQuery) {
       shell.openExternal("https://www.youtube.com");
-      return buildReply("open", { target: "YouTube" });
+      return buildReply("open", { target: "YouTube" }, responseLanguage);
     }
 
     try {
@@ -345,15 +362,15 @@ function createBrowserCommandRunner(shell) {
       const match = html.match(/\"videoId\":\"([a-zA-Z0-9_-]{11})\"/);
       if (!match || !match[1]) {
         shell.openExternal(searchUrl);
-        return buildYouTubeReply(cleanQuery, { didAutoplay: false });
+        return buildYouTubeReply(cleanQuery, { didAutoplay: false, responseLanguage });
       }
 
       const videoId = match[1];
       shell.openExternal(`https://www.youtube.com/watch?v=${videoId}&autoplay=1`);
-      return buildYouTubeReply(cleanQuery, { didAutoplay: true });
+      return buildYouTubeReply(cleanQuery, { didAutoplay: true, responseLanguage });
     } catch {
       shell.openExternal(`https://www.youtube.com/results?search_query=${encodeURIComponent(cleanQuery)}`);
-      return buildYouTubeReply(cleanQuery, { didAutoplay: false });
+      return buildYouTubeReply(cleanQuery, { didAutoplay: false, responseLanguage });
     }
   }
 
@@ -365,26 +382,29 @@ function createBrowserCommandRunner(shell) {
     }
 
     const friendlySiteName = rule.displayName || (rule.key === "x" ? "X" : rule.key[0].toUpperCase() + rule.key.slice(1));
+    const responseLanguage = intent?.responseLanguage || "english";
     const speakingQuery = query.slice(0, 120);
 
     if (rule.key === "youtube" && query) {
-      return openYouTubeTopResultOrSearch(query);
+      return openYouTubeTopResultOrSearch(query, responseLanguage);
     }
 
     const url = query && typeof rule.searchUrl === "function" ? rule.searchUrl(query) : rule.homeUrl;
     shell.openExternal(url);
     return query && typeof rule.searchUrl === "function"
-      ? buildReply("search", { site: friendlySiteName, query: speakingQuery })
-      : buildReply("open", { target: friendlySiteName });
+      ? buildReply("search", { site: friendlySiteName, query: speakingQuery }, responseLanguage)
+      : buildReply("open", { target: friendlySiteName }, responseLanguage);
   }
 
   function openGenericWebsite(intent) {
     shell.openExternal(intent.url);
-    return buildReply("open", { target: intent.displayName });
+    return buildReply("open", { target: intent.displayName }, intent?.responseLanguage || "english");
   }
 
   function openMultipleBrowserTasks(intents) {
     const displayNames = [];
+    const languageIntent = intents.find((intent) => intent.responseLanguage || intent.genericWebsite?.responseLanguage);
+    const responseLanguage = languageIntent?.responseLanguage || languageIntent?.genericWebsite?.responseLanguage || "english";
 
     for (const intent of intents) {
       if (intent.genericWebsite) {
@@ -401,7 +421,7 @@ function createBrowserCommandRunner(shell) {
       displayNames.push(rule.displayName || rule.key);
     }
 
-    return buildReply("multiOpen", { targets: formatList(displayNames) });
+    return buildReply("multiOpen", { targets: formatList(displayNames, responseLanguage) }, responseLanguage);
   }
 
   return {
@@ -442,31 +462,32 @@ function classifyYouTubeQuery(query) {
 function buildYouTubeReply(query, options = {}) {
   const topic = String(query || "").trim().slice(0, 80);
   const didAutoplay = Boolean(options.didAutoplay);
+  const responseLanguage = options.responseLanguage || "english";
   const kind = classifyYouTubeQuery(query);
 
   if (kind === "educational") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "informational") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "rock") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "pop") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "hiphop") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "chill") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
   if (kind === "music") {
-    return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+    return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
   }
 
-  return didAutoplay ? buildReply("play", { topic }) : buildReply("find", { topic });
+  return didAutoplay ? buildReply("play", { topic }, responseLanguage) : buildReply("find", { topic }, responseLanguage);
 }
 
 module.exports = {

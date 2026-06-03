@@ -76,7 +76,6 @@ async function transcribeWithGroq(audioBase64, mimeType) {
   const formData = new FormData();
   formData.append("model", GROQ_MODELS.transcription);
   formData.append("file", file);
-  formData.append("language", "en");
   formData.append("temperature", "0");
 
   const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
@@ -104,7 +103,7 @@ async function planActionWithGroq(transcript, context) {
   }
 
   const systemPrompt =
-    "You are an assistant that returns strict JSON only. Choose one action from: open_notepad, open_calculator, open_vscode, search_web, open_website, locate_ui_element, explain_software, none. Return keys: action, argument, reply. Use current on-screen context first. If user asks to find/locate/show a button, tab, panel, menu, icon, or control, choose locate_ui_element and put only that target name in argument. Choose explain_software only when user explicitly asks for tutorial/guide/walkthrough/explain entire software.";
+    "You are an assistant that returns strict JSON only. The user may speak English, Hindi, Urdu, or Hinglish. Choose one action from: open_notepad, open_calculator, open_vscode, search_web, open_website, locate_ui_element, explain_software, none. Return keys: action, argument, reply. Use current on-screen context first. If user asks to find/locate/show a button, tab, panel, menu, icon, or control, choose locate_ui_element and put only that target name in argument. Choose explain_software only when user explicitly asks for tutorial/guide/walkthrough/explain entire software.";
 
   const screenUnderstanding = await summarizeScreenContextWithGroq(context?.screenFrame).catch(() => "");
 

@@ -7,6 +7,7 @@ const {
 } = require("./browser-commands");
 const { extractCursorColorIntent } = require("./cursor-commands");
 const { buildReply } = require("./reply-builder");
+const { detectResponseLanguage } = require("./text-utils");
 const { extractWebKnowledgeIntent } = require("./web-knowledge");
 
 function createConversationRouter({
@@ -31,6 +32,7 @@ function createConversationRouter({
 
   async function resolve(transcript, payload) {
     const overlayWindow = overlayWindowProvider();
+    const responseLanguage = detectResponseLanguage(transcript);
 
     const cursorColorIntent = extractCursorColorIntent(transcript);
     if (cursorColorIntent) {
@@ -85,9 +87,10 @@ function createConversationRouter({
       logDecision(transcript, "web", {
         isFollowUp: Boolean(resolvedContext?.isFollowUp),
         kind: "web-knowledge",
+        language: webKnowledgeIntent.responseLanguage,
         query: webKnowledgeIntent.resolvedQuery,
       });
-      await speakInterim(buildReply("webSearchStart"));
+      await speakInterim(buildReply("webSearchStart", {}, responseLanguage));
       overlayWindow?.webContents.send("assistant:status", {
         text: "Checking the web...",
       });
@@ -114,7 +117,10 @@ function createConversationRouter({
 
     logDecision(transcript, "command", { action: plan.action, kind: "planner-action" });
     return {
-      ...(await actionExecutor.executePlannedAction(plan)),
+      ...(await actionExecutor.executePlannedAction({
+        ...plan,
+        responseLanguage,
+      })),
       route: "command",
     };
   }

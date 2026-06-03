@@ -2,7 +2,7 @@
 const { getGroqTextApiKey } = require("./env");
 const { GROQ_MODELS } = require("./groq-models");
 const { sanitizeAssistantText } = require("./response-sanitizer");
-const { normalizeTranscript } = require("./text-utils");
+const { detectResponseLanguage, getLanguageInstruction, normalizeTranscript } = require("./text-utils");
 
 const CASUAL_PATTERNS = [
   /\b(how are you|how r you|what's up|whats up|sup)\b/,
@@ -15,11 +15,15 @@ const CASUAL_PATTERNS = [
   /\b(say|tell|greet|wish|shout out)\b.+\b(to|for)\b/,
   /\b(can you|could you|please)\b.+\b(say|tell|greet|wish|shout out)\b/,
   /\b(i am|i'm|im)\b.+\b(on|in|live|streaming|recording)\b/,
+  /\b(kaise ho|kya haal|kya scene|sun rahe ho|suno|namaste|salaam|assalam|shukriya|dhanyavaad)\b/,
+  /(कैसे हो|क्या हाल|नमस्ते|शुक्रिया|धन्यवाद|सुन रहे हो)/,
+  /(کیسے ہو|کیا حال|سلام|شکریہ|سن رہے ہو)/,
 ];
 
 function extractBuddyChatIntent(transcript) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s?']/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s?']/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -32,13 +36,14 @@ function extractBuddyChatIntent(transcript) {
   }
 
   if (CASUAL_PATTERNS.some((pattern) => pattern.test(normalized))) {
-    return { message: String(transcript || "").trim() };
+    return { message: String(transcript || "").trim(), responseLanguage };
   }
 
   return null;
 }
 
 async function answerBuddyChat(intent) {
+  const responseLanguage = intent?.responseLanguage || detectResponseLanguage(intent?.message || "");
   const fallback = answerBuddyChatFallback(intent?.message || "");
   if (isDirectSpeechRequest(intent?.message || "")) {
     return fallback;
@@ -63,7 +68,7 @@ async function answerBuddyChat(intent) {
           {
             role: "system",
             content:
-              "You are AI Buddy, a warm, casual desktop voice companion. Reply naturally in one short sentence. Output ONLY the final spoken reply. Do not include reasoning, analysis, labels, quoted user text, or phrases like 'the user is asking'. Do not claim to browse the web. Do not mention URLs or commands unless the user asks.",
+              `You are AI Buddy, a warm, casual desktop voice companion. ${getLanguageInstruction(responseLanguage)} Output ONLY the final spoken reply. Do not include reasoning, analysis, labels, quoted user text, or phrases like 'the user is asking'. Do not claim to browse the web. Do not mention URLs or commands unless the user asks.`,
           },
           {
             role: "user",
@@ -86,10 +91,50 @@ async function answerBuddyChat(intent) {
 
 function answerBuddyChatFallback(message) {
   const normalized = normalizeTranscript(message);
+  const responseLanguage = detectResponseLanguage(message);
 
   const directSpeech = buildDirectSpeechReply(message);
   if (directSpeech) {
     return directSpeech;
+  }
+
+  if (responseLanguage === "hindi") {
+    if (/\b(how are you|how r you|kaise ho)\b/.test(normalized) || /(कैसे हो|क्या हाल)/.test(normalized)) {
+      return "मैं बढ़िया हूँ. बताओ, क्या करना है?";
+    }
+    if (/(नमस्ते|हेलो|हाय)/.test(normalized)) {
+      return "नमस्ते. मैं यहीं हूँ.";
+    }
+    if (/(शुक्रिया|धन्यवाद)/.test(normalized)) {
+      return "हमेशा. मैं हूँ ना.";
+    }
+    return "मैं यहीं हूँ. बताओ, क्या चल रहा है?";
+  }
+
+  if (responseLanguage === "urdu") {
+    if (/(کیسے ہو|کیا حال)/.test(normalized)) {
+      return "میں اچھی ہوں. بتائیں، کیا کرنا ہے؟";
+    }
+    if (/(سلام|ہیلو|ہائے)/.test(normalized)) {
+      return "سلام. میں یہیں ہوں.";
+    }
+    if (/(شکریہ|مہربانی)/.test(normalized)) {
+      return "ہمیشہ. میں ہوں نا.";
+    }
+    return "میں یہیں ہوں. بتائیں، کیا چل رہا ہے؟";
+  }
+
+  if (responseLanguage === "hinglish") {
+    if (/\b(how are you|how r you|kaise ho|kya haal)\b/.test(normalized)) {
+      return "Main mast hoon. Batao, kya karna hai?";
+    }
+    if (/\b(namaste|salaam|hi|hello|hey)\b/.test(normalized)) {
+      return "Hey, main yahin hoon.";
+    }
+    if (/\b(shukriya|dhanyavaad|thanks|thank you)\b/.test(normalized)) {
+      return "Always. Main hoon na.";
+    }
+    return "Main yahin hoon. Batao, kya scene hai?";
   }
 
   if (/\b(how are you|how r you)\b/.test(normalized)) {

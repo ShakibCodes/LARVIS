@@ -2,7 +2,7 @@
 const { getGroqTextApiKey } = require("./env");
 const { GROQ_MODELS } = require("./groq-models");
 const { sanitizeAssistantText } = require("./response-sanitizer");
-const { normalizeTranscript } = require("./text-utils");
+const { detectResponseLanguage, getLanguageInstruction, normalizeTranscript } = require("./text-utils");
 
 const QUESTION_STARTERS = [
   "what",
@@ -18,6 +18,13 @@ const QUESTION_STARTERS = [
   "find out",
   "look up",
   "search about",
+  "batao",
+  "bataye",
+  "kaun",
+  "kya",
+  "kab",
+  "kahan",
+  "kyu",
 ];
 
 const CURRENT_TERMS = [
@@ -33,6 +40,9 @@ const CURRENT_TERMS = [
   "this month",
 ];
 
+const MULTILINGUAL_QUESTION_CUES =
+  /(कौन|क्या|कब|कहाँ|कहां|क्यों|कैसे|बताओ|بتاؤ|کون|کیا|کب|کہاں|کیوں|کیسے|kaun|kya|kab|kahan|kyu|kaise|batao)/;
+
 const CASUAL_QUESTIONS = [
   /\bhow are you\b/,
   /\bhow r you\b/,
@@ -40,6 +50,9 @@ const CASUAL_QUESTIONS = [
   /\bwhats up\b/,
   /\byou there\b/,
   /\bcan you hear me\b/,
+  /\bkaise ho\b/,
+  /\bkya haal\b/,
+  /(कैसे हो|क्या हाल|کیسے ہو|کیا حال)/,
 ];
 
 const LOCAL_CONVERSATION_CONTEXT = [
@@ -62,8 +75,9 @@ const webAnswerCache = new Map();
 const sourceTextCache = new Map();
 
 function extractWebKnowledgeIntent(transcript, context = null) {
+  const responseLanguage = detectResponseLanguage(transcript);
   const normalized = normalizeTranscript(transcript)
-    .replace(/[^\w\s?.-]/g, " ")
+    .replace(/[^\p{L}\p{M}\p{N}\s?.-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 
@@ -86,6 +100,7 @@ function extractWebKnowledgeIntent(transcript, context = null) {
   const looksLikeQuestion =
     normalized.endsWith("?") ||
     QUESTION_STARTERS.some((starter) => normalized.startsWith(starter)) ||
+    MULTILINGUAL_QUESTION_CUES.test(normalized) ||
     CURRENT_TERMS.some((term) => new RegExp(`\\b${term}\\b`).test(normalized)) ||
     Boolean(context?.isFollowUp);
 
@@ -97,6 +112,7 @@ function extractWebKnowledgeIntent(transcript, context = null) {
     query: normalized.replace(/\?+$/g, "").trim(),
     resolvedQuery: String(context?.query || normalized).replace(/\?+$/g, "").trim(),
     previousTopic: context?.previous?.topic || "",
+    responseLanguage,
     needsFreshSources: CURRENT_TERMS.some((term) => new RegExp(`\\b${term}\\b`).test(normalized)),
   };
 }
@@ -117,6 +133,7 @@ async function answerWebKnowledgeQuestion(intent) {
 
   const answer = await summarizeWithGroq(intent.query, sourceTexts, {
     previousTopic: intent.previousTopic,
+    responseLanguage: intent.responseLanguage,
     resolvedQuery: intent.resolvedQuery,
   });
   setCachedWebAnswer(query, answer);
@@ -305,7 +322,7 @@ async function summarizeWithGroq(question, sourceTexts, context = {}) {
         {
           role: "system",
           content:
-            "Answer like a concise, natural voice assistant. Use only the provided web sources. Prefer fresh, specific facts. If sources are weak, partial, or disagree, say that briefly. Keep it under 90 words. Do not mention URLs. If the user asks a follow-up with pronouns, resolve them using the provided conversation context.",
+            `Answer like a concise, natural voice assistant. ${getLanguageInstruction(context.responseLanguage || "english")} Use only the provided web sources. Prefer fresh, specific facts. If sources are weak, partial, or disagree, say that briefly. Keep it under 90 words. Do not mention URLs. If the user asks a follow-up with pronouns, resolve them using the provided conversation context.`,
         },
         {
           role: "user",

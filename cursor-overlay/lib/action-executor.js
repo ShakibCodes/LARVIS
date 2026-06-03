@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { normalizeTranscript } = require("./text-utils");
+const { detectResponseLanguage, normalizeTranscript } = require("./text-utils");
 const { buildReply } = require("./reply-builder");
 
 function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extractGenericOpenWebsiteIntent, runCommand, shell }) {
@@ -8,6 +8,7 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
   async function executePlannedAction(plan) {
     const action = (plan?.action || "none").toString();
     const argument = (plan?.argument || "").toString().trim();
+    const responseLanguage = plan?.responseLanguage || detectResponseLanguage(argument);
 
     const plannedBrowserTask = extractBrowserTaskIntent(argument) || extractBrowserTaskIntent(`${action} ${argument}`);
     if (plannedBrowserTask) {
@@ -21,17 +22,17 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
 
     if (action === "open_notepad") {
       runCommand("start notepad");
-      return { message: buildReply("open", { target: "Notepad" }) };
+      return { message: buildReply("open", { target: "Notepad" }, responseLanguage) };
     }
 
     if (action === "open_calculator") {
       runCommand("start calc");
-      return { message: buildReply("open", { target: "Calculator" }) };
+      return { message: buildReply("open", { target: "Calculator" }, responseLanguage) };
     }
 
     if (action === "open_vscode") {
       runCommand("start code");
-      return { message: buildReply("open", { target: "VS Code" }) };
+      return { message: buildReply("open", { target: "VS Code" }, responseLanguage) };
     }
 
     if (action === "search_web" && argument) {
@@ -40,7 +41,7 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
         return { message: await openBrowserTask(browserTask) };
       }
       shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(argument)}`);
-      return { message: buildReply("search", { site: "Google", query: argument }) };
+      return { message: buildReply("search", { site: "Google", query: argument }, responseLanguage) };
     }
 
     if (action === "open_website" && argument) {
@@ -61,12 +62,12 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
         .split(".")
         .slice(0, 2)
         .join(" ");
-      return { message: buildReply("open", { target: spokenSite }) };
+      return { message: buildReply("open", { target: spokenSite }, responseLanguage) };
     }
 
     if (action === "explain_software") {
       return {
-        message: buildReply("guide", { target: argument || "this software" }),
+        message: buildReply("guide", { target: argument || "this software" }, responseLanguage),
         suppressFinalTts: true,
         shouldStartGuidedTour: true,
         softwareName: argument || "this software",
@@ -75,18 +76,19 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
 
     if (action === "locate_ui_element") {
       return {
-        message: buildReply("locate", { target: argument || "that control" }),
+        message: buildReply("locate", { target: argument || "that control" }, responseLanguage),
         suppressFinalTts: true,
         shouldLocateElement: true,
         elementName: argument || "requested control",
       };
     }
 
-    return { message: plan?.reply || buildReply("unsupported") };
+    return { message: plan?.reply || buildReply("unsupported", {}, responseLanguage) };
   }
 
   async function executeVoiceCommandFallback(transcript) {
     const normalized = normalizeTranscript(transcript);
+    const responseLanguage = detectResponseLanguage(transcript);
 
     const browserTask = extractBrowserTaskIntent(normalized);
     if (browserTask) {
@@ -100,17 +102,17 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
 
     if (normalized.includes("open notepad")) {
       runCommand("start notepad");
-      return buildReply("open", { target: "Notepad" });
+      return buildReply("open", { target: "Notepad" }, responseLanguage);
     }
 
     if (normalized.includes("open calculator")) {
       runCommand("start calc");
-      return buildReply("open", { target: "Calculator" });
+      return buildReply("open", { target: "Calculator" }, responseLanguage);
     }
 
     if (normalized.includes("open vscode") || normalized.includes("open vs code")) {
       runCommand("start code");
-      return buildReply("open", { target: "VS Code" });
+      return buildReply("open", { target: "VS Code" }, responseLanguage);
     }
 
     if (normalized.startsWith("search for ")) {
@@ -120,7 +122,7 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
         return openBrowserTask(nestedBrowserTask);
       }
       shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(query)}`);
-      return buildReply("search", { site: "Google", query });
+      return buildReply("search", { site: "Google", query }, responseLanguage);
     }
 
     if (normalized.startsWith("open website ")) {
@@ -137,15 +139,15 @@ function createActionExecutor({ browserCommands, extractBrowserTaskIntent, extra
         .split("/")[0]
         .split(".")[0]
         .replace(/[-_]+/g, " ");
-      return buildReply("open", { target: spokenSite });
+      return buildReply("open", { target: spokenSite }, responseLanguage);
     }
 
     if (normalized.startsWith("explain ")) {
       const softwareName = normalized.replace("explain ", "").replace("software", "").trim();
-      return buildReply("guide", { target: softwareName || "this app" });
+      return buildReply("guide", { target: softwareName || "this app" }, responseLanguage);
     }
 
-    return buildReply("unsupported");
+    return buildReply("unsupported", {}, responseLanguage);
   }
 
   return {
