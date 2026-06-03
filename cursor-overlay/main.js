@@ -28,6 +28,7 @@ let overlayWindow = null;
 let tickInterval = null;
 let latestCursorPoint = { x: 0, y: 0 };
 let overlayBounds = null;
+let isNotchInteractive = false;
 const conversationContext = createConversationContext();
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
@@ -230,6 +231,16 @@ function rememberConversationTurn(transcript, actionResult) {
 }
 
 function registerIpcHandlers() {
+  ipcMain.on("assistant:notch-interactive", (_event, nextState) => {
+    const shouldInteract = Boolean(nextState);
+    if (!overlayWindow || overlayWindow.isDestroyed() || isNotchInteractive === shouldInteract) {
+      return;
+    }
+
+    isNotchInteractive = shouldInteract;
+    overlayWindow.setIgnoreMouseEvents(!shouldInteract, { forward: true });
+  });
+
   ipcMain.handle("assistant:cursor-context", () => {
     return {
       x: latestCursorPoint.x,

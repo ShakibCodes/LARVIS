@@ -98,6 +98,10 @@
         opacity: 1;
       }
 
+      #assistant-notch.interactive {
+        pointer-events: auto;
+      }
+
       .notch-grip {
         position: absolute;
         top: 3px;
@@ -127,6 +131,15 @@
         transition-delay: 70ms;
       }
 
+      .notch-view {
+        display: none;
+        gap: 14px;
+      }
+
+      .notch-view.active {
+        display: grid;
+      }
+
       .notch-header {
         display: flex;
         align-items: center;
@@ -137,6 +150,36 @@
           700 12px/1.1 "Segoe UI",
           system-ui,
           sans-serif;
+      }
+
+      .notch-title-row {
+        display: grid;
+        grid-template-columns: 24px 1fr auto;
+        align-items: center;
+        gap: 8px;
+        color: #f8fafc;
+        font:
+          700 12px/1.1 "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+
+      .notch-back {
+        width: 22px;
+        height: 22px;
+        border: 1px solid rgba(212, 212, 216, 0.2);
+        border-radius: 5px;
+        background: rgba(24, 24, 27, 0.9);
+        color: #f4f4f5;
+        font:
+          800 14px/1 "Segoe UI",
+          system-ui,
+          sans-serif;
+        cursor: pointer;
+      }
+
+      .notch-back:hover {
+        background: rgba(39, 39, 42, 0.96);
       }
 
       .notch-status {
@@ -159,6 +202,8 @@
       }
 
       .notch-tile {
+        appearance: none;
+        text-align: left;
         min-height: 54px;
         border: 1px solid rgba(212, 212, 216, 0.18);
         border-radius: 6px;
@@ -172,10 +217,45 @@
           700 11px/1.1 "Segoe UI",
           system-ui,
           sans-serif;
+        cursor: pointer;
+      }
+
+      .notch-tile:hover {
+        border-color: rgba(244, 244, 245, 0.32);
+        background: rgba(39, 39, 42, 0.94);
       }
 
       .notch-tile span {
         margin-top: 4px;
+        color: #a1a1aa;
+        font:
+          600 9px/1.1 "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+
+      .integration-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .integration-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 32px;
+        border: 1px solid rgba(212, 212, 216, 0.14);
+        border-radius: 6px;
+        background: rgba(24, 24, 27, 0.72);
+        color: #e4e4e7;
+        padding: 0 10px;
+        font:
+          700 10px/1.1 "Segoe UI",
+          system-ui,
+          sans-serif;
+      }
+
+      .integration-item span {
         color: #a1a1aa;
         font:
           600 9px/1.1 "Segoe UI",
@@ -312,15 +392,30 @@
     <section id="assistant-notch" aria-label="AI Buddy controls">
       <div class="notch-grip" aria-hidden="true"></div>
       <div class="notch-content">
-        <div class="notch-header">
-          <strong>AI Buddy</strong>
-          <div id="assistant-status" class="notch-status">Ready</div>
+        <div class="notch-view active" data-notch-view="home">
+          <div class="notch-header">
+            <strong>AI Buddy</strong>
+            <div id="assistant-status" class="notch-status">Ready</div>
+          </div>
+          <div class="notch-grid">
+            <button class="notch-tile" type="button" data-notch-target="config">Config<span>Voice and behavior</span></button>
+            <button class="notch-tile" type="button" data-notch-target="integrations">Integrations<span>Connected apps</span></button>
+            <button class="notch-tile" type="button" data-notch-target="connectors">Connectors<span>Web and tools</span></button>
+            <button class="notch-tile" type="button" data-notch-target="commands">Commands<span>Open, search, guide</span></button>
+          </div>
         </div>
-        <div class="notch-grid">
-          <div class="notch-tile">Config<span>Voice and behavior</span></div>
-          <div class="notch-tile">Integrations<span>Connected apps</span></div>
-          <div class="notch-tile">Connectors<span>Web and tools</span></div>
-          <div class="notch-tile">Commands<span>Open, search, guide</span></div>
+
+        <div class="notch-view" data-notch-view="integrations">
+          <div class="notch-title-row">
+            <button class="notch-back" type="button" data-notch-back aria-label="Back">‹</button>
+            <strong>Integrations</strong>
+            <div class="notch-status">Preview</div>
+          </div>
+          <div class="integration-list">
+            <div class="integration-item">Google Apps<span>Gmail, Calendar, Drive</span></div>
+            <div class="integration-item">Web Knowledge<span>Search and summarize</span></div>
+            <div class="integration-item">Voice Stack<span>Groq + ElevenLabs</span></div>
+          </div>
         </div>
       </div>
     </section>

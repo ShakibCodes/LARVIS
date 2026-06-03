@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { getGroqTextApiKey } = require("./env");
+const { GROQ_MODELS } = require("./groq-models");
 const { normalizeTranscript } = require("./text-utils");
 
 const QUESTION_STARTERS = [
@@ -218,7 +219,7 @@ async function summarizeWithGroq(question, sourceTexts, context = {}) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: GROQ_MODELS.webKnowledge,
       temperature: 0.12,
       messages: [
         {

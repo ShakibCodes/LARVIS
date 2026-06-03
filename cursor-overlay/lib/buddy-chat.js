@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const { getGroqTextApiKey } = require("./env");
+const { GROQ_MODELS } = require("./groq-models");
 const { normalizeTranscript } = require("./text-utils");
 
 const CASUAL_PATTERNS = [
@@ -55,7 +56,7 @@ async function answerBuddyChat(intent) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "llama-3.1-8b-instant",
+        model: GROQ_MODELS.buddyChat,
         temperature: 0.65,
         messages: [
           {

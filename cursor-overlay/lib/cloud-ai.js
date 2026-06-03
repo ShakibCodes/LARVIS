@@ -6,6 +6,7 @@ const {
   getGroqSpeechApiKey,
   getGroqTextApiKey,
 } = require("./env");
+const { GROQ_MODELS } = require("./groq-models");
 
 function safeVoiceText(input) {
   return String(input || "")
@@ -72,7 +73,7 @@ async function transcribeWithGroq(audioBase64, mimeType) {
   const file = new File([blob], "voice.webm", { type: mimeType || "audio/webm" });
 
   const formData = new FormData();
-  formData.append("model", "whisper-large-v3");
+  formData.append("model", GROQ_MODELS.transcription);
   formData.append("file", file);
   formData.append("language", "en");
   formData.append("temperature", "0");
@@ -120,7 +121,7 @@ async function planActionWithGroq(transcript, context) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "llama-3.1-8b-instant",
+      model: GROQ_MODELS.commandPlanner,
       temperature: 0.1,
       messages: [
         { role: "system", content: systemPrompt },
@@ -154,7 +155,7 @@ async function summarizeScreenContextWithGroq(screenFrame) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      model: GROQ_MODELS.screenVision,
       temperature: 0,
       messages: [
         {
@@ -203,7 +204,7 @@ async function planVisualGuidedTourWithGroq(softwareName, context) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      model: GROQ_MODELS.screenVision,
       temperature: 0.15,
       response_format: { type: "json_object" },
       messages: [
@@ -276,7 +277,7 @@ async function planVisualElementLocationWithGroq(targetName, context) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "meta-llama/llama-4-scout-17b-16e-instruct",
+      model: GROQ_MODELS.screenVision,
       temperature: 0.1,
       response_format: { type: "json_object" },
       messages: [

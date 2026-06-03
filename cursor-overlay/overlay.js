@@ -3,6 +3,9 @@ const { desktopCapturer, ipcRenderer } = require("electron");
 
 const cursor = document.getElementById("secondary-cursor");
 const assistantNotch = document.getElementById("assistant-notch");
+const notchViews = Array.from(document.querySelectorAll("[data-notch-view]"));
+const notchNavigationButtons = Array.from(document.querySelectorAll("[data-notch-target]"));
+const notchBackButtons = Array.from(document.querySelectorAll("[data-notch-back]"));
 const voiceBars = Array.from(document.querySelectorAll(".voice-bar"));
 const clickRing = document.getElementById("click-ring");
 const tooltip = document.getElementById("cursor-tooltip");
@@ -21,10 +24,11 @@ let currentAssistantAudio = null;
 let currentAssistantObjectUrl = "";
 let currentAssistantResolve = null;
 let currentAssistantCleanup = null;
-let queuedInterruptionListen = false;
 let isGuidedTourRunning = false;
 let isGuidedControlActive = false;
 let tooltipText = "";
+let isNotchInteractive = false;
+let activeNotchView = "home";
 
 const followOffsetX = 42;
 const followOffsetY = 28;
@@ -38,8 +42,6 @@ const initialSpeechTimeoutMs = 5000;
 const minRecordingMs = 900;
 const silenceToStopMs = 950;
 const speechRmsThreshold = 0.035;
-const interruptionRmsThreshold = 0.045;
-const interruptionHoldMs = 260;
 let visualizerRafId = null;
 const allowedCursorColors = new Set(["blue", "green", "yellow", "red"]);
 
@@ -54,6 +56,30 @@ function updateAssistantNotch(nextX, nextY) {
   const isNearExpandedNotch = nextY <= 212 && horizontalDistance <= 228;
   const shouldExpand = assistantNotch.classList.contains("expanded") ? isNearExpandedNotch : isNearCollapsedNotch;
   assistantNotch.classList.toggle("expanded", shouldExpand);
+  assistantNotch.classList.toggle("interactive", shouldExpand);
+  setNotchInteractive(shouldExpand);
+
+  if (!shouldExpand && activeNotchView !== "home") {
+    showNotchView("home");
+  }
+}
+
+function setNotchInteractive(nextState) {
+  if (isNotchInteractive === nextState) {
+    return;
+  }
+
+  isNotchInteractive = nextState;
+  ipcRenderer.send("assistant:notch-interactive", nextState);
+}
+
+function showNotchView(viewName) {
+  const nextView = viewName === "integrations" ? "integrations" : "home";
+  activeNotchView = nextView;
+
+  for (const view of notchViews) {
+    view.classList.toggle("active", view.dataset.notchView === nextView);
+  }
 }
 
 function renderCursor() {
@@ -122,6 +148,18 @@ ipcRenderer.on("cursor:position", (_event, payload) => {
   targetY = payload.y;
   updateAssistantNotch(targetX, targetY);
 });
+
+for (const button of notchNavigationButtons) {
+  button.addEventListener("click", () => {
+    showNotchView(button.dataset.notchTarget || "home");
+  });
+}
+
+for (const button of notchBackButtons) {
+  button.addEventListener("click", () => {
+    showNotchView("home");
+  });
+}
 
 function setStatus(text) {
   if (!statusPanel) {
@@ -240,18 +278,7 @@ async function playAssistantAudio(tts) {
     currentAssistantObjectUrl = objectUrl;
 
     return await new Promise((resolve, reject) => {
-      let wasInterrupted = false;
       currentAssistantResolve = resolve;
-      const stopBargeInMonitor = startBargeInMonitor(() => {
-        if (audio.paused || audio.ended) {
-          return;
-        }
-        wasInterrupted = true;
-        audio.pause();
-        audio.currentTime = 0;
-        cleanup();
-        resolve({ interrupted: true });
-      });
 
       const onEnded = () => {
         cleanup();
@@ -262,7 +289,6 @@ async function playAssistantAudio(tts) {
         reject(new Error("Failed to play assistant audio."));
       };
       const cleanup = () => {
-        stopBargeInMonitor();
         if (!audio.paused && !audio.ended) {
           audio.pause();
           audio.currentTime = 0;
@@ -283,10 +309,6 @@ async function playAssistantAudio(tts) {
       audio.addEventListener("error", onError);
       audio.play().catch((error) => {
         cleanup();
-        if (wasInterrupted) {
-          resolve({ interrupted: true });
-          return;
-        }
         reject(error);
       });
     });
@@ -320,95 +342,6 @@ function stopAssistantAudio(result = { interrupted: false }) {
   if (resolveCurrent) {
     resolveCurrent(result);
   }
-}
-
-function startBargeInMonitor(onInterrupt) {
-  if (isGuidedTourRunning) {
-    return () => {};
-  }
-
-  let stopped = false;
-  let stream = null;
-  let audioContext = null;
-  let source = null;
-  let analyser = null;
-  let monitorInterval = null;
-  let speechStartedAt = 0;
-
-  const stop = () => {
-    stopped = true;
-    if (monitorInterval !== null) {
-      clearInterval(monitorInterval);
-      monitorInterval = null;
-    }
-    if (source) {
-      source.disconnect();
-    }
-    if (analyser) {
-      analyser.disconnect();
-    }
-    if (audioContext) {
-      audioContext.close().catch(() => {});
-    }
-    if (stream) {
-      for (const track of stream.getTracks()) {
-        track.stop();
-      }
-    }
-  };
-
-  navigator.mediaDevices
-    .getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-      video: false,
-    })
-    .then((nextStream) => {
-      if (stopped) {
-        for (const track of nextStream.getTracks()) {
-          track.stop();
-        }
-        return;
-      }
-
-      stream = nextStream;
-      const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContextCtor) {
-        return;
-      }
-
-      audioContext = new AudioContextCtor();
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      analyser.smoothingTimeConstant = 0.74;
-      source = audioContext.createMediaStreamSource(stream);
-      source.connect(analyser);
-      const pcmData = new Float32Array(analyser.fftSize);
-
-      monitorInterval = setInterval(() => {
-        const rms = getStreamRms(analyser, pcmData);
-        const now = Date.now();
-
-        if (rms >= interruptionRmsThreshold) {
-          if (!speechStartedAt) {
-            speechStartedAt = now;
-          }
-          if (now - speechStartedAt >= interruptionHoldMs) {
-            stop();
-            onInterrupt();
-          }
-          return;
-        }
-
-        speechStartedAt = 0;
-      }, 60);
-    })
-    .catch(() => {});
-
-  return stop;
 }
 
 async function captureScreenFrame() {
@@ -591,7 +524,6 @@ async function listenOnce() {
   }
 
   isListening = true;
-  queuedInterruptionListen = false;
 
   try {
     setStatus("Listening... speak now.");
@@ -609,36 +541,32 @@ async function listenOnce() {
       cursorContext,
     });
 
-    if (queuedInterruptionListen) {
-      return;
-    }
-
     if (!result.ok) {
       setStatus(result.message);
-      const playback = await playAssistantAudio(result.tts);
-      queuedInterruptionListen = Boolean(playback?.interrupted);
+      await playAssistantAudio(result.tts);
       return;
     }
 
     setStatus(`Heard: "${result.transcript}"<br />${result.message}`);
-    const playback = await playAssistantAudio(result.tts);
-    queuedInterruptionListen = Boolean(playback?.interrupted);
+    await playAssistantAudio(result.tts);
   } catch (error) {
     setStatus(`Voice error: ${error.message}`);
   } finally {
     setExecutingState(false);
     isListening = false;
-    if (queuedInterruptionListen) {
-      queuedInterruptionListen = false;
-      setStatus("Listening... go ahead.");
-      setTimeout(() => {
-        void listenOnce();
-      }, 90);
-    }
   }
 }
 
 ipcRenderer.on("assistant:toggle-listening", () => {
+  if (currentAssistantAudio) {
+    stopAssistantAudio({ interrupted: true });
+    setStatus("Listening... go ahead.");
+    setTimeout(() => {
+      void listenOnce();
+    }, 90);
+    return;
+  }
+
   void listenOnce();
 });
 
@@ -650,12 +578,7 @@ ipcRenderer.on("assistant:play-tts", (_event, payload) => {
   if (payload?.statusText) {
     setStatus(payload.statusText);
   }
-  void playAssistantAudio(payload).then((playback) => {
-    if (playback?.interrupted) {
-      queuedInterruptionListen = true;
-      setStatus("Listening... go ahead.");
-    }
-  });
+  void playAssistantAudio(payload);
 });
 
 ipcRenderer.on("cursor:set-color", (_event, payload) => {
