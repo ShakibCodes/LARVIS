@@ -8,6 +8,8 @@ const notchNavigationButtons = Array.from(document.querySelectorAll("[data-notch
 const notchBackButtons = Array.from(document.querySelectorAll("[data-notch-back]"));
 const gmailConnectButton = document.getElementById("gmail-connect-button");
 const gmailIntegrationStatus = document.getElementById("gmail-integration-status");
+const calendarConnectButton = document.getElementById("calendar-connect-button");
+const calendarIntegrationStatus = document.getElementById("calendar-integration-status");
 const voiceStackStatus = document.getElementById("voice-stack-status");
 const elevenLabsVoiceBadge = document.getElementById("elevenlabs-voice-badge");
 const geminiVoiceBadge = document.getElementById("gemini-voice-badge");
@@ -127,6 +129,7 @@ function showNotchView(viewName) {
 
   if (nextView === "integrations") {
     void refreshGmailIntegrationStatus();
+    void refreshCalendarIntegrationStatus();
   }
   if (nextView === "voice") {
     void refreshVoiceStatus();
@@ -230,6 +233,24 @@ if (gmailConnectButton) {
   });
 }
 
+if (calendarConnectButton) {
+  calendarConnectButton.addEventListener("click", async () => {
+    calendarConnectButton.disabled = true;
+    calendarConnectButton.textContent = "Opening";
+    setCalendarIntegrationStatus("Waiting for Google...");
+    try {
+      const result = await ipcRenderer.invoke("assistant:calendar-connect");
+      setCalendarIntegrationStatus(result?.email ? `Connected: ${result.email}` : result?.message || "Connected", true);
+      calendarConnectButton.textContent = "Reconnect";
+    } catch (error) {
+      setCalendarIntegrationStatus(error.message || "Connect failed");
+      calendarConnectButton.textContent = "Connect";
+    } finally {
+      calendarConnectButton.disabled = false;
+    }
+  });
+}
+
 async function refreshGmailIntegrationStatus() {
   if (!gmailIntegrationStatus || !gmailConnectButton) {
     return;
@@ -257,6 +278,35 @@ function setGmailIntegrationStatus(text, isConnected = false) {
   }
   gmailIntegrationStatus.textContent = String(text || "").slice(0, 70);
   gmailIntegrationStatus.classList.toggle("connected", isConnected);
+}
+
+async function refreshCalendarIntegrationStatus() {
+  if (!calendarIntegrationStatus || !calendarConnectButton) {
+    return;
+  }
+
+  try {
+    const status = await ipcRenderer.invoke("assistant:calendar-status");
+    if (status?.connected) {
+      setCalendarIntegrationStatus(status.email ? `Connected: ${status.email}` : "Connected", true);
+      calendarConnectButton.textContent = "Reconnect";
+      return;
+    }
+
+    setCalendarIntegrationStatus("Not connected", false);
+    calendarConnectButton.textContent = "Connect";
+  } catch {
+    setCalendarIntegrationStatus("Status unavailable");
+    calendarConnectButton.textContent = "Connect";
+  }
+}
+
+function setCalendarIntegrationStatus(text, isConnected = false) {
+  if (!calendarIntegrationStatus) {
+    return;
+  }
+  calendarIntegrationStatus.textContent = String(text || "").slice(0, 70);
+  calendarIntegrationStatus.classList.toggle("connected", isConnected);
 }
 
 async function refreshVoiceStatus() {

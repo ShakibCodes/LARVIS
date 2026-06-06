@@ -7,6 +7,7 @@ const {
 } = require("./browser-commands");
 const { extractCursorColorIntent } = require("./cursor-commands");
 const { extractGmailIntent } = require("./gmail-integration");
+const { extractGoogleCalendarIntent } = require("./google-calendar-integration");
 const { buildReply } = require("./reply-builder");
 const { detectResponseLanguage } = require("./text-utils");
 const { extractWebKnowledgeIntent } = require("./web-knowledge");
@@ -17,6 +18,7 @@ function createConversationRouter({
   answerWebKnowledgeQuestion,
   applyCursorColor,
   browserCommands,
+  calendarIntegration = null,
   conversationContext,
   decisionLog = null,
   gmailIntegration = null,
@@ -73,16 +75,6 @@ function createConversationRouter({
       };
     }
 
-    const buddyChatIntent = extractBuddyChatIntent(transcript);
-    if (buddyChatIntent) {
-      logDecision(transcript, "chat", { kind: "buddy-chat" });
-      return {
-        message: await answerBuddyChat(buddyChatIntent),
-        memoryType: "chat",
-        route: "chat",
-      };
-    }
-
     const gmailIntent = extractGmailIntent(transcript);
     if (gmailIntent && gmailIntegration) {
       logDecision(transcript, "gmail", { kind: "gmail", type: gmailIntent.type });
@@ -93,6 +85,29 @@ function createConversationRouter({
       return {
         ...result,
         route: "gmail",
+      };
+    }
+
+    const calendarIntent = extractGoogleCalendarIntent(transcript);
+    if (calendarIntent && calendarIntegration) {
+      logDecision(transcript, "calendar", { kind: "calendar", type: calendarIntent.type });
+      const result = await calendarIntegration.answer(calendarIntent).catch((error) => ({
+        message: `I tried checking Google Calendar, but something went wrong: ${error.message}`,
+        route: "calendar",
+      }));
+      return {
+        ...result,
+        route: "calendar",
+      };
+    }
+
+    const buddyChatIntent = extractBuddyChatIntent(transcript);
+    if (buddyChatIntent) {
+      logDecision(transcript, "chat", { kind: "buddy-chat" });
+      return {
+        message: await answerBuddyChat(buddyChatIntent),
+        memoryType: "chat",
+        route: "chat",
       };
     }
 

@@ -11,6 +11,7 @@ const {
 const { buildReply } = require("../lib/reply-builder");
 const { detectResponseLanguage } = require("../lib/text-utils");
 const { _test: gmailTest } = require("../lib/gmail-integration");
+const { _test: calendarTest } = require("../lib/google-calendar-integration");
 const { _test: cloudAiTest } = require("../lib/cloud-ai");
 const { _test, extractWebKnowledgeIntent } = require("../lib/web-knowledge");
 
@@ -43,6 +44,9 @@ function createTestRouter() {
     answerWebKnowledgeQuestion: async (intent) => `web:${intent.resolvedQuery}`,
     applyCursorColor: (_overlayWindow, intent) => ({ message: `Cursor ${intent.color}`, route: "command" }),
     browserCommands,
+    calendarIntegration: {
+      answer: async (intent) => ({ message: `calendar:${intent.type}`, route: "calendar" }),
+    },
     conversationContext,
     decisionLog,
     overlayWindowProvider: () => ({
@@ -163,6 +167,17 @@ async function run() {
     "Thanks a lot. I really appreciate it.",
   );
   assert.match(rawReply, /^[A-Za-z0-9_-]+$/);
+
+  assert.strictEqual(calendarTest.extractGoogleCalendarIntent("connect google calendar")?.type, "connect");
+  assert.strictEqual(calendarTest.extractGoogleCalendarIntent("what meetings do I have today")?.type, "events");
+  assert.strictEqual(calendarTest.extractGoogleCalendarIntent("am I free tomorrow")?.type, "free");
+  assert.strictEqual(calendarTest.extractGoogleCalendarIntent("calendar status")?.type, "status");
+  assert.strictEqual(calendarTest.parseCalendarEvent({ start: { dateTime: "2026-06-06T10:00:00+05:30" }, summary: "Standup" }).summary, "Standup");
+
+  const calendarRouter = createTestRouter();
+  const calendarResult = await calendarRouter.router.resolve("what meetings do I have today", {});
+  assert.strictEqual(calendarResult.route, "calendar");
+  assert.match(calendarResult.message, /^calendar:/);
 
   assert.strictEqual(cloudAiTest.shouldFallbackToGemini({ reason: "ElevenLabs TTS failed (402): quota exceeded" }), true);
   assert.strictEqual(cloudAiTest.shouldFallbackToGemini({ reason: "ElevenLabs TTS failed (500): server error" }), false);

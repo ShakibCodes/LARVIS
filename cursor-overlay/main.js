@@ -13,6 +13,7 @@ const { createConversationRouter } = require("./lib/conversation-router");
 const { createActionExecutor } = require("./lib/action-executor");
 const { createDecisionLog } = require("./lib/decision-log");
 const { createGmailIntegration } = require("./lib/gmail-integration");
+const { createGoogleCalendarIntegration } = require("./lib/google-calendar-integration");
 const {
   getElevenLabsApiKey,
   getGeminiApiKey,
@@ -44,6 +45,10 @@ const gmailIntegration = createGmailIntegration({
   getUserDataPath: () => app.getPath("userData"),
   shell,
 });
+const calendarIntegration = createGoogleCalendarIntegration({
+  getUserDataPath: () => app.getPath("userData"),
+  shell,
+});
 
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
@@ -71,6 +76,7 @@ const conversationRouter = createConversationRouter({
   answerWebKnowledgeQuestion,
   applyCursorColor,
   browserCommands,
+  calendarIntegration,
   conversationContext,
   decisionLog,
   gmailIntegration,
@@ -279,6 +285,18 @@ function registerIpcHandlers() {
 
   ipcMain.handle("assistant:gmail-disconnect", () => {
     return gmailIntegration.disconnect();
+  });
+
+  ipcMain.handle("assistant:calendar-status", () => {
+    return calendarIntegration.getStatus();
+  });
+
+  ipcMain.handle("assistant:calendar-connect", async () => {
+    return calendarIntegration.connect();
+  });
+
+  ipcMain.handle("assistant:calendar-disconnect", () => {
+    return calendarIntegration.disconnect();
   });
 
   ipcMain.handle("assistant:voice-status", () => {
