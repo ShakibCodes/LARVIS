@@ -124,3 +124,6 @@ function createGuidedTourController({ getOverlayBounds, getOverlayWindow, planVi
 module.exports = {
   createGuidedTourController,
 };
+
+
+// need to remove the pre guided coordinates and implement automated screen visualiser.
